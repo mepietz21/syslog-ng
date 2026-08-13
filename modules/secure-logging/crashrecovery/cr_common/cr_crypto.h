@@ -22,10 +22,11 @@
  */
 
 
-#ifndef cr_crypto_h
-#define cr_crypto_h
+#ifndef CR_CRYPTO
+#define CR_CRYPTO
 
 #include <stdio.h>
+#include <glib.h>
 #include <openssl/evp.h>
 #include "cr_pi_shared.h"
 
@@ -51,18 +52,18 @@
 // PRF stuff
 typedef struct cr_PRG128Context
 {
-  unsigned int counter; // internal counter, which will be increased for each AES block added within the current context.
-  unsigned char seed[16]; // secure seed.
+  guint counter; // internal counter, which will be increased for each AES block added within the current context.
+  guchar seed[16]; // secure seed.
 } cr_PRG128Context;
 
 typedef struct cr_PRGContext
 {
-  unsigned int counter; // internal counter, which will be increased for each AES block added within the current context.
-  unsigned char seed[KEY_SIZE]; // secure seed.
+  guint counter; // internal counter, which will be increased for each AES block added within the current context.
+  guchar seed[KEY_SIZE]; // secure seed.
 } cr_PRGContext;
 
-cr_PRGContext *cr_CreatePRGContext(unsigned char seed[KEY_SIZE]);
-cr_PRG128Context *cr_CreatePRG128Context(unsigned char seed[16]);
+cr_PRGContext *cr_CreatePRGContext(guchar seed[KEY_SIZE]);
+cr_PRG128Context *cr_CreatePRG128Context(guchar seed[16]);
 
 /*
  * Function: PRG
@@ -75,7 +76,7 @@ cr_PRG128Context *cr_CreatePRG128Context(unsigned char seed[16]);
  *
  * returns: 0 on failure and 1 on success.
  */
-int cr_PRG(cr_PRGContext *ctx, unsigned char *buffer, int size);
+int cr_PRG(cr_PRGContext *ctx, guchar *buffer, gint size);
 
 /*
  * Function: PRG
@@ -88,7 +89,7 @@ int cr_PRG(cr_PRGContext *ctx, unsigned char *buffer, int size);
  *
  * returns: 0 on failure and 1 on success.
  */
-int cr_PRG128(cr_PRG128Context *ctx, unsigned char *buffer, int size);
+int cr_PRG128(cr_PRG128Context *ctx, guchar *buffer, gint size);
 
 // key stuff:
 
@@ -97,28 +98,28 @@ int cr_PRG128(cr_PRG128Context *ctx, unsigned char *buffer, int size);
  * ----------------------
  * K_{i+1} = PRF_{K_i}(\gamma)
  */
-int cr_KeyEvolution(unsigned char *key, unsigned char *nextKey);
+int cr_KeyEvolution(guchar *key, guchar *nextKey);
 
 /*
  * Function: DeriveSubKeys
  * -----------------------
  * Derives the different sub keys from the current seassion key.
  */
-int cr_DeriveSubKeys(unsigned char masterSessionkey[KEY_SIZE], unsigned char encKey[KEY_SIZE],
-                     unsigned char drnKey[KEY_SIZE], unsigned char tagKey[KEY_SIZE], unsigned char idKey[KEY_SIZE]);
+int cr_DeriveSubKeys(guchar masterSessionkey[KEY_SIZE], guchar encKey[KEY_SIZE],
+                     guchar drnKey[KEY_SIZE], guchar tagKey[KEY_SIZE], guchar idKey[KEY_SIZE]);
 /*
  * Funtion: GenerateMasterKey
  * --------------------------
  * Generates a new truely random bit string.
  */
-int cr_GenerateMasterKey(unsigned char *masterKey);
+int cr_GenerateMasterKey(guchar *masterKey);
 
 /*
  * Funtion: GenerateIV
  * --------------------------
  * Generates a new truely random bit string.
  */
-int cr_GenerateIV(unsigned char *iv);
+int cr_GenerateIV(guchar *iv);
 
 /*
  * Function: PRF
@@ -133,7 +134,7 @@ int cr_GenerateIV(unsigned char *iv);
  *
  * returns: 0 on failure and 1 on success.
  */
-int cr_PRF(unsigned char *input, size_t inputSize, unsigned char *key, unsigned char *output, uint8_t outputSize);
+int cr_PRF(guchar *input, gsize inputSize, guchar *key, guchar *output, guint8 outputSize);
 
 // Random things:
 
@@ -149,8 +150,7 @@ int cr_PRF(unsigned char *input, size_t inputSize, unsigned char *key, unsigned 
  *
  * returns: the uniformly distributed random number.
  */
-unsigned int cr_UniformRandomInt(cr_PRGContext *ctx, const unsigned int upperBound);
-
+int cr_UniformRandomInt(cr_PRGContext *ctx, const guint upperBound, guint *out);
 
 
 
@@ -167,7 +167,7 @@ unsigned int cr_UniformRandomInt(cr_PRGContext *ctx, const unsigned int upperBou
  * returns: 0 on failure and 1 on success.
  */
 //int DRN_thesis(unsigned char *seed, int k, const int upperBound, int *kRandom);
-int cr_DRN(unsigned char seed[KEY_SIZE], const int the_k, const int upperBound, int kRandom[THE_K]);
+int cr_DRN(guchar seed[KEY_SIZE], const gint the_k, const gint upperBound, gint kRandom[THE_K]);
 
 
 
@@ -185,8 +185,8 @@ int cr_DRN(unsigned char seed[KEY_SIZE], const int the_k, const int upperBound, 
  *
  * returns: the ciphertext length.
  */
-int cr_AES_256_CTR_encrypt(unsigned char *plaintext, int plaintextSize, unsigned char *key, unsigned char *iv,
-                           unsigned char *ciphertextBuffer);
+int cr_AES_256_CTR_encrypt(guchar *plaintext, gint plaintextSize, guchar *key, guchar *iv,
+                           guchar *ciphertextBuffer);
 
 /*
  * Function: AES_256_CTR_decrypt
@@ -200,8 +200,8 @@ int cr_AES_256_CTR_encrypt(unsigned char *plaintext, int plaintextSize, unsigned
  *
  * returns: the plaintext length.
  */
-int cr_AES_256_CTR_decrypt(unsigned char *ciphertext, int ciphertextSize, unsigned char *key, unsigned char *iv,
-                           unsigned char *plaintextBuffer);
+int cr_AES_256_CTR_decrypt(guchar *ciphertext, gint ciphertextSize, guchar *key, guchar *iv,
+                           guchar *plaintextBuffer);
 
 /*
  * Funtion: CMAC
@@ -217,6 +217,6 @@ int cr_AES_256_CTR_decrypt(unsigned char *ciphertext, int ciphertextSize, unsign
  *
  * returns: 0 on failure and 1 on success.
  */
-int cr_CMAC(unsigned char *key, unsigned char *input, size_t inputSize, unsigned char *output, size_t *outputSize,
-            size_t maxOutputSize);
+int cr_CMAC(guchar *key, guchar *input, gsize inputSize, guchar *output, gsize *outputSize,
+            gsize maxOutputSize);
 #endif /* cr_crypto_h */

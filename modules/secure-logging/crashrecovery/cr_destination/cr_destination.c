@@ -1,3 +1,4 @@
+```c
 /*
  * Copyright (c) 2015-2026 Airbus Commercial Aircraft
  *
@@ -42,6 +43,25 @@
 #include "cr_pi_logger.h"
 
 
+// new
+static CrLogMode
+_cr_destination_parse_logmode(const gchar *mode)
+{
+  if (mode == NULL)
+    return CR_LOGMODE_ENC;
+
+  if (g_ascii_strcasecmp(mode, "direct") == 0)
+    return CR_LOGMODE_DIRECT;
+
+  if (g_ascii_strcasecmp(mode, "base64") == 0)
+    return CR_LOGMODE_BASE64;
+
+  if (g_ascii_strcasecmp(mode, "enc") == 0)
+    return CR_LOGMODE_ENC;
+
+  return CR_LOGMODE_ENC;
+}
+
 //----------------------------------------------------------------------
 // cr_destination_dd_set_filenametoken
 // Take over configuration of file name token (first part of full file name)
@@ -84,14 +104,6 @@ void cr_destination_dd_set_dir(LogDriver *d, const gchar *value)
 // cr_destination_dd_set_logrotcnt
 // Take over the count of log lines allowed for log file (log rotation size)
 
-void cr_destination_dd_set_logrotcnt(LogDriver *d, const gsize value)
-{
-  CrDestinationDriver *self = (CrDestinationDriver *)d;
-  self->n_logrotcnt = value;
-  msg_info(CR_INFO_PREFIX, evt_tag_long("cr_destination logrotcnt", self->n_logrotcnt));
-}
-
-
 //----------------------------------------------------------------------
 // cr_destination_dd_set_mode
 // Take over configuration of log mode.
@@ -101,11 +113,18 @@ void cr_destination_dd_set_logrotcnt(LogDriver *d, const gsize value)
 // plain logs. Log mode 'plain_enc' provides plain and Crash Recovery
 // logging.
 
-void cr_destination_dd_set_mode(LogDriver *d, const gchar *value)
+// new
+void
+cr_destination_dd_set_mode(LogDriver *d, const gchar *value)
 {
-  CrDestinationDriver *self = (CrDestinationDriver *)d;
-  g_string_assign(self->gstr_mode, value);
-  msg_info(CR_INFO_PREFIX, evt_tag_str("cr_destination mode", self->gstr_keypath->str));
+  CrDestinationDriver *self = (CrDestinationDriver *) d;
+
+  self->log_mode = _cr_destination_parse_logmode(value);
+  g_string_assign(self->gstr_mode, value ? value : "enc");
+
+  msg_info(CR_INFO_PREFIX,
+           evt_tag_str("cr_destination mode", self->gstr_mode->str),
+           evt_tag_long("log_mode", self->log_mode));
 }
 
 
@@ -160,49 +179,86 @@ static gboolean _dd_init(LogPipe *d)
 
   //-- TODO check mode
 
-  //-- create plain log file ---
-  gchar *sz_initial_filename_plain = g_strdup_printf("%s_part%ld.log", self->gstr_filenametoken->str,
-                                                     self->n_current_part); //-- will not be stored, temporarly known
-  msg_info(CR_INFO_PREFIX, evt_tag_str("sz_initial_filename_plain", sz_initial_filename_plain));
-  self->fp_current_file_plain = fopen(sz_initial_filename_plain, "a");
-  g_free(sz_initial_filename_plain);
-  if (!self->fp_current_file_plain)
+  if (self->log_mode == CR_LOGMODE_DIRECT ||
+      self->log_mode == CR_LOGMODE_BASE64)
     {
-      msg_error("Failed to open initial log file!");
-      return FALSE; // Initialization failed
+      const gchar *extension =
+          self->log_mode == CR_LOGMODE_BASE64 ? "b64" : "log";
+
+      gchar *filename =
+          g_strdup_printf("%s_part%ld.%s",
+                          self->gstr_filenametoken->str,
+                          self->n_current_part,
+                          extension);
+
+      self->fp_current_file_plain = fopen(filename, "a");
+
+      msg_info(CR_INFO_PREFIX,
+                evt_tag_str("filename", filename),
+                evt_tag_str("mode", self->gstr_mode->str));
+
+      g_free(filename);
+
+      if (!self->fp_current_file_plain)
+        {
+          msg_error(CR_ERROR_PREFIX,
+                    evt_tag_str("Reason",
+                                "cr_destination, Could not open new output file"));
+          return FALSE;
+        }
     }
-
-  //-- create context for enc log file, Crash Recovery ---
-  self->loggerctx.maxLogs = self->n_logrotcnt;
-  //-- prepare log file for crash recovery (first of x logs)
-  self->loggerctx.p_OutputEncLogPath = g_strdup_printf("%s_part%ld.enc", self->gstr_filenametoken->str,
-                                                       self->n_current_part);
-  //-- Note: do not g_free cr_initial_ffn here
-  //-- Take over key to use (the MasterKey is deep copied and becomes sessionkey)
-  self->loggerctx.p_MasterKeyPath = self->gstr_keypath->str;
-  //-- Take over output directoy path
-  self->loggerctx.p_OutputDirectoryPath = self->gstr_dir->str;
-  //-- Prepare cr_looger contexts
-  self->p_pictx = NULL;
-
-  self->p_prg = NULL; //-- Variant1: only the first time, Variant2: always NULL (FALSE == is_reuse_prg)
-  gboolean cr_retval = FALSE;
-  if (TRUE == self->is_reuse_prg)
+  else if (self->log_mode == CR_LOGMODE_ENC)
     {
-      cr_retval = init_cr_logger_functionality(&(self->loggerctx), &(self->p_pictx), &(self->p_prg));
+      self->loggerctx.maxLogs = self->n_logrotcnt;
+
+      self->loggerctx.p_OutputEncLogPath =
+          g_strdup_printf("%s_part%ld.enc",
+                          self->gstr_filenametoken->str,
+                          self->n_current_part);
+
+      self->loggerctx.p_MasterKeyPath =
+          self->gstr_keypath->str;
+
+      self->loggerctx.p_OutputDirectoryPath =
+          self->gstr_dir->str;
+
+      self->p_pictx = NULL;
+
+      gboolean cr_retval;
+
+      if (self->is_reuse_prg)
+        {
+          cr_retval =
+              init_cr_logger_functionality(&(self->loggerctx),
+                                            &(self->p_pictx),
+                                            &(self->p_prg));
+        }
+      else
+        {
+          cr_retval =
+              init_cr_logger_functionality(&(self->loggerctx),
+                                            &(self->p_pictx),
+                                            NULL);
+        }
+
+      if (FALSE == cr_retval)
+        {
+          msg_error(CR_ERROR_PREFIX,
+                    evt_tag_str("Reason",
+                                "cr_destination, init_cr_logger_functionality"));
+          return FALSE;
+        }
     }
   else
     {
-      cr_retval = init_cr_logger_functionality(&(self->loggerctx), &(self->p_pictx), NULL);
+      msg_error(CR_ERROR_PREFIX,
+                evt_tag_str("Reason",
+                            "cr_destination, invalid log mode"),
+                evt_tag_str("mode", self->gstr_mode->str));
+      return FALSE;
     }
 
   cr_destination_dd_debug_log(self);
-
-  if (FALSE == cr_retval)
-    {
-      msg_error(CR_ERROR_PREFIX, evt_tag_str("Reason", "ERROR: cr_destination, init_cr_logger_functionality"));
-      return FALSE;
-    }
 
   msg_info(CR_INFO_PREFIX, evt_tag_str("Reason", "cr_destination, _dd_init, DONE"));
   return TRUE;
@@ -270,7 +326,9 @@ LogDriver *cr_destination_dd_new(GlobalConfig *cfg)
   self->gstr_filenametoken = g_string_new("");
   self->gstr_keypath = g_string_new("");
   self->gstr_dir = g_string_new("");
+  // new
   self->gstr_mode = g_string_new("");
+  self->log_mode = CR_LOGMODE_ENC;
 
   //-- cr
   self->p_pictx = NULL;
@@ -430,4 +488,7 @@ void cr_destination_dd_debug_log(CrDestinationDriver *self)
       g_string_free(gstr, TRUE);
     }
 }
+```
 
+Das ist jetzt bewusst **keine neu formatierte Version**. Die vorhandene Struktur und die vorhandenen Kommentare deines aktuellen `Pasted text(1).txt` bleiben erhalten; geändert sind nur die doppelte Setter-Definition und der falsche Block in `_dd_init()`.
+**Wichtig:** Damit `direct`, `enc` und `base64` tatsächlich beim Schreiben und bei der Rotation funktionieren, ist danach noch `cr_destination_worker.c` dran. Dort sollten wir jetzt genauso vorgehen: **deine Originaldatei nehmen und nur die beiden betroffenen Stellen patchen.**

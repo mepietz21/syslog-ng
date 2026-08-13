@@ -102,7 +102,8 @@ int main(int argc, char *argv[])
 
   if (1 > argc)
     {
-      g_printerr("ERROR: cr_logger: Wrong count of arguments!\n");
+      // fixed: msg_error
+      msg_error("Wrong count of arguments");
       return 1; //-- ERROR
     }
 
@@ -123,7 +124,9 @@ int main(int argc, char *argv[])
   if (!g_option_context_parse(context, &argc, &argv, &error))
     {
       // If parsing failed, print the error and exit.
-      g_printerr("ERROR: cr_logger: parsing options: %s\n", error->message);
+      // fixed: msg_error
+      msg_error("Failed to parse command-line options",
+              evt_tag_str("error", error->message));
       g_error_free(error);
       g_option_context_free(context);
       return 1; //-- ERROR
@@ -132,18 +135,20 @@ int main(int argc, char *argv[])
   if ((5 != argc) && (FALSE == is_arg_key) && (FALSE == is_arg_in) && (FALSE == is_arg_out)
       && (FALSE == is_arg_maxlogs))
     {
-      g_printerr("ERROR: cr_logger: Wrong count of arguments!\n");
+      // fixed: msg_error
+      msg_error("Wrong count of arguments");
       g_option_context_free(context);
       return 1; //-- ERROR
     }
 
   //-- check master key, --key, -k
   char szMasterKeyPath[PATH_MAX];
-  strncpy(szMasterKeyPath, argv[1], PATH_MAX - 1);
-  szMasterKeyPath[PATH_MAX - 1] = '\0';
+  g_strlcpy(szMasterKeyPath, argv[1], PATH_MAX);
   if ( ! g_file_test(szMasterKeyPath, G_FILE_TEST_IS_REGULAR))
     {
-      g_printerr("ERROR: cr_logger: Invalid full file name of master key: %s\n", szMasterKeyPath);
+      // fixed: msg_error
+      msg_error("Invalid master key file", 
+                evt_tag_str("path", szMasterKeyPath));
       g_option_context_free(context);
       return 1; //-- ERROR
     }
@@ -151,11 +156,12 @@ int main(int argc, char *argv[])
   //-- check logs, --in, -i
   // InputFileName: plain test log file to read
   char szInputFileName[PATH_MAX];
-  strncpy(szInputFileName, argv[2], PATH_MAX);
-  szInputFileName[PATH_MAX - 1] = '\0';
+  g_strlcpy(szInputFileName, argv[2], PATH_MAX);
   if ( ! g_file_test(szInputFileName, G_FILE_TEST_IS_REGULAR))
     {
-      g_printerr("ERROR: cr_logger: Invalid full log file name %s\n", szInputFileName);
+      // fixed: msg_error
+      msg_error("Invalid input log file", 
+                evt_tag_str("path", szInputFileName));
       g_option_context_free(context);
       return 1; //-- ERROR
     }
@@ -164,19 +170,21 @@ int main(int argc, char *argv[])
   // OutputFileName: encrypted log file to write
   char szOutputFileName[PATH_MAX];
   char szOutputDir[PATH_MAX];
-  strncpy(szOutputFileName, argv[3], PATH_MAX);
-  szOutputFileName[PATH_MAX - 1] = '\0';
+  g_strlcpy(szOutputFileName, argv[3], PATH_MAX);
   gboolean is_valid_dir_from_file = get_path_from_file(szOutputFileName, szOutputDir, sizeof(szOutputDir));
   if (FALSE == is_valid_dir_from_file)
     {
-      g_printerr("ERROR: cr_logger: Invalid file path (directory from file is invalid) %s\n", szOutputFileName);
+      // fixed: msg_error
+      msg_error("Invalid output file path", 
+                evt_tag_str("path", szOutputFileName));
       g_option_context_free(context);
       return 1; //-- ERROR   (alternative: mkdir -p ...)
     }
-  char last = szOutputDir[strlen(szOutputDir)];
-  if ( '/' != last )
+
+  size_t dir_len = strlen(szOutputDir);
+  if (dir_len >= 0 && szOutputDir[dir_len - 1] != '/')
     {
-      strncat(szOutputDir, "/", PATH_MAX - 1);
+      g_strlcat(szOutputDir, "/", PATH_MAX);
     }
 
   //-- check maxlogs
@@ -185,13 +193,17 @@ int main(int argc, char *argv[])
   long int litemp = strtol(argv[4], &endptr, 10);
   if (*endptr != '\0')
     {
-      g_printerr("ERROR: cr_logger: Invalid maxlogs, expected a number: %s\n", argv[4]);
+      // fixed: msg_error
+      msg_error("Invalid maxlogs value", 
+                evt_tag_str("value", argv[4]));
       g_option_context_free(context);
       return 1; //-- ERROR
     }
   if (litemp > INT_MAX)
     {
-      g_printerr("ERROR: cr_logger: maxlogs expected to be less or equal INT_MAX: %s\n", argv[4]);
+      // fixed: msg_error
+      msg_error("maxlogs exceeds INT_MAX", 
+                evt_tag_str("value", argv[4]));
       g_option_context_free(context);
       return 1; //-- ERROR
     }
@@ -200,23 +212,26 @@ int main(int argc, char *argv[])
     {
       //-- anyhow, maxlogs should be at least 4096 to be reliable ensure Crash Recovery,
       //   see https://eprint.iacr.org/2019/506.pdf, p 22, fig 3
-      g_printerr("ERROR: cr_logger: Out of range: maxlogs: %d\n", maxlogs);
+      // fixed: msg_error
+      msg_error("maxlogs is out of range", 
+                evt_tag_printf("maxlogs", "%d", maxlogs), 
+                evt_tag_printf("minimum", "%d", THE_K + 1));
       g_option_context_free(context);
       return 1; //-- ERROR
     }
 
-  g_print("key (initial key): %s\n", argv[1]);
-  g_print("in (plain log file): %s\n", argv[2]);
-  g_print("out (enc log file): %s\n", argv[3]);
-  g_print("maxlogs (count of log lines): %s\n", argv[4]);
+  msg_info("key (initial key): %s", argv[1]);
+  msg_info("in (plain log file): %s", argv[2]);
+  msg_info("out (enc log file): %s", argv[3]);
+  msg_info("maxlogs (count of log lines): %s", argv[4]);
 
   g_option_context_free(context);
 
-  g_print("szMasterKeyPath: %s\n", szMasterKeyPath);
-  g_print("szInputFileName: %s\n", szInputFileName);
-  g_print("szOutputFileName: %s\n", szOutputFileName);
-  g_print("szOutputDir: %s\n", szOutputDir); //-- derived from szOutputFileName. Will NOT be created. Must exist.
-  g_print("maxlogs: %d\n", maxlogs);
+  msg_info("szMasterKeyPath: %s", szMasterKeyPath);
+  msg_info("szInputFileName: %s", szInputFileName);
+  msg_info("szOutputFileName: %s", szOutputFileName);
+  msg_info("szOutputDir: %s", szOutputDir); //-- derived from szOutputFileName. Will NOT be created. Must exist.
+  msg_info("maxlogs: %d", maxlogs);
 
   cr_pi_logger_context loggerCtx = {NULL, NULL, NULL, NULL, INT_MAX};
 
@@ -233,20 +248,24 @@ int main(int argc, char *argv[])
   char szBuffer[256];
   memset(szBuffer, 0, sizeof(szBuffer));
   get_human_timestamp(szBuffer);
-  g_print("%s\n", szBuffer);
+  msg_info("%s", szBuffer);
   struct timespec start, end;
   start = get_ts_now();
   error = NULL;
   GPtrArray *gpa_logs = cr_pi_logger_main_read_logs_glib(loggerCtx.p_InputPlainLogPath, loggerCtx.maxLogs, &error);
   if (error)
     {
-      g_printerr("ERROR: cr_logger: Failed to read log file: %s\n", error->message);
+      // fixed: msg_error
+      msg_error("Failed to read log file", 
+                evt_tag_str("error", error->message)); 
+        
       g_error_free(error);
       return 1; //-- ERROR
     }
   if (NULL == gpa_logs)
     {
-      g_printerr("ERROR: cr_logger: Failed to read log file! (NULL == gpa_logs)\n");
+      // fixed: msg_error
+      msg_error("cr_logger: Failed to read log file! (NULL == gpa_logs)");
       return 1; //-- ERROR
     }
   //-- log file read. Lines as GString*'s in gap_logs.
@@ -262,7 +281,8 @@ int main(int argc, char *argv[])
   // This will initialize the log file of the according size, and will write the pseudo random pad.
   if (FALSE == cr_Init(ctx) )
     {
-      g_printerr("ERROR: cr_logger: cr_Init,  Initialization failed!\n");
+      // fixed: msg_error
+      msg_error("cr_logger: cr_Init, Initialization failed");
       g_free(ctx->keyPath);
       g_free(ctx);
       g_ptr_array_free(gpa_logs, TRUE);
@@ -270,29 +290,33 @@ int main(int argc, char *argv[])
     }
 
   gboolean is_add = FALSE;
-  g_print("gpa_logs->len: %d\n\n", gpa_logs->len);
+  msg_info("gpa_logs->len: %d", gpa_logs->len);
   for (guint i = 0; i < gpa_logs->len; ++i)
     {
       // Pass the modified string to AddLogEntry (add item).
       GString *line = (GString *) g_ptr_array_index(gpa_logs, i);
       if (line->len > MAX_LINE_LENGTH)
         {
-          g_warning("Log string is too long. Will be shortened! i: %d, Length: %ld, maximal allowed octet length: %d\n", i,
-                    line->len,
-                    MAX_LINE_LENGTH);
-          g_print("Before truncate: %s\n", line->str);
+          // fixed: msg_warning
+          msg_warning("Log string is too long and will be shortened", 
+                      evt_tag_printf("line", "%u", i), 
+                      evt_tag_printf("length", "%zu", line->len), 
+                      evt_tag_printf("max_length", "%d", MAX_LINE_LENGTH));
+
+          msg_info("Before truncate: %s", line->str);
           truncate_utf8_gstring(line, MAX_LINE_LENGTH);
-          g_print("After truncate: %s\n", line->str);
+          msg_info("After truncate: %s", line->str);
         }
       if ( (0 == (i & 511)) || (i == (gpa_logs->len - 1)))
         {
-          g_print("\x1b[2K\r  process line %d of %d", i + 1, gpa_logs->len);
+          msg_info("\x1b[2K\r  process line %d of %d", i + 1, gpa_logs->len);
         }
       is_add = cr_AddLogEntry(ctx, (unsigned char *)(line->str), line->len); //-- line->len: count of octets
       if (FALSE == is_add)
         {
-          g_print("ERROR: cr_logger:  cr_addLogEntry was not successful. break and quit.\n");
-          g_printerr("cr_AddLogEntry fails\n");
+          // fixed: msg_warning
+          msg_error("Failed to add log entry", 
+                    evt_tag_printf("line", "%u", i));
           break; //-- ERROR, Note: Cancel on first error
         }
 
@@ -301,11 +325,11 @@ int main(int argc, char *argv[])
 
   if (TRUE == is_add)
     {
-      g_print("\n\ncr_logger: %d Logs have been written successfully\n", gpa_logs->len);
+      msg_info("cr_logger: %d Logs have been written successfully", gpa_logs->len);
     }
   else
     {
-      g_print("\n\ncr_logger: %d Logs have NOT been written successfully\n", gpa_logs->len);
+      msg_info("cr_logger: %d Logs have NOT been written successfully", gpa_logs->len);
     }
 
 
@@ -328,10 +352,10 @@ int main(int argc, char *argv[])
 
   end = get_ts_now();
   (void) get_time_diff_in_milliseconds(start, end, "Crash Recovery Logger (read + encrypt)");
-  g_print("\n");
+  msg_info("");
   memset(szBuffer, 0, sizeof(szBuffer));
   get_human_timestamp(szBuffer);
-  g_print("%s\n", szBuffer);
+  msg_info("%s", szBuffer);
 
   //-- return value main logic
   if (FALSE == is_add)
@@ -367,7 +391,7 @@ GPtrArray *cr_pi_logger_main_read_logs_glib(const gchar *path, gint max_log_coun
   GIOChannel *channel = g_io_channel_new_file(path, "r", error);
   if (!channel)
     {
-      g_print("ERROR: g_io_channel_new_file, file: %s\n", path);
+      msg_error("ERROR: g_io_channel_new_file, file: %s", path);
       return NULL;
     }
 
@@ -377,7 +401,9 @@ GPtrArray *cr_pi_logger_main_read_logs_glib(const gchar *path, gint max_log_coun
   GIOStatus encoding_status = g_io_channel_set_encoding(channel, NULL, error);
   if (encoding_status == G_IO_STATUS_ERROR)
     {
-      g_print("ERROR: g_io_channel_set_encoding: %s\n", (*error)->message);
+      // fixed: msg_error
+      msg_error("Failed to set input encoding", 
+                evt_tag_str("error", (*error)->message));
       g_io_channel_unref(channel);
       return NULL;
     }
@@ -450,13 +476,17 @@ GPtrArray *cr_pi_logger_main_read_logs_glib(const gchar *path, gint max_log_coun
 
   if (TRUE == is_found_invalid)
     {
-      g_print("WARNING: Input log file %s contains invalid bytes!\n", path);
+      // fixed: msg_warning
+      msg_warning("Input log file contains invalid bytes", 
+                  evt_tag_str("path", path));
     }
 
   if (G_IO_STATUS_ERROR == status)
     {
       //-- This only catches real I/O errors now
-      g_print("G_IO_STATUS_ERROR\n");
+      // fixed: msg_error
+      msg_error("Failed to read input log file", 
+                evt_tag_str("path", path));
       g_ptr_array_free(gpa_logs, TRUE); //-- Clean up
       g_io_channel_unref(channel);
       return NULL;

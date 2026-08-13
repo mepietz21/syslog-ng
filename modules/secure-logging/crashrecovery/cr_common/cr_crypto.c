@@ -37,14 +37,13 @@
 #include <math.h>
 #include <limits.h>
 
-#include <glib.h>
-
 #include <openssl/conf.h>
 #include <openssl/err.h>
 #include <openssl/cmac.h>
 #include <openssl/rand.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
+#include <glib.h>
 
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 #include <openssl/params.h>
@@ -63,14 +62,14 @@ SLOGCR_STATIC_ASSERT(AES_BLOCK_LEN == 16, "Wrong_AES_Block_Size_for_provided_GAM
 #define FILL_16(val) val, val, val, val, val, val, val, val, \
                       val, val, val, val, val, val, val, val
 
-static unsigned char GAMMA[2 * AES_BLOCK_LEN] = { FILL_16(PAD1), FILL_16(PAD1) };
+static guchar GAMMA[2 * AES_BLOCK_LEN] = { FILL_16(PAD1), FILL_16(PAD1) };
 
 
-static int cr_under_PRG(unsigned char *seed, unsigned int *counter, const EVP_CIPHER *cipher, unsigned char *buffer,
-                        int size);
-static int cr_AES_encrypt(const EVP_CIPHER *cipher, unsigned char *plaintext, int plaintextSize, unsigned char *key,
-                          unsigned char *iv, unsigned char *ciphertextBuffer);
-static int cr_exists(int element, const int arr[], size_t size);
+static gint cr_under_PRG(guchar *seed, guint *counter, const EVP_CIPHER *cipher, guchar *buffer,
+                        gint size);
+static gint cr_AES_encrypt(const EVP_CIPHER *cipher, guchar *plaintext, gint plaintextSize, guchar *key,
+                          guchar *iv, guchar *ciphertextBuffer);
+static gint cr_exists(gint element, const gint arr[], gsize size);
 static void cr_handleErrors(void);
 
 
@@ -80,12 +79,14 @@ static void cr_handleErrors(void);
 // in seed: Seed to be copied into context
 // returns pointer to cr_PRG128Context
 
-cr_PRG128Context *cr_CreatePRG128Context(unsigned char seed[16])
+cr_PRG128Context *cr_CreatePRG128Context(guchar seed[16])
 {
   cr_PRG128Context *context = g_malloc0(sizeof(cr_PRG128Context));
   if (context == NULL)
     {
-      g_warning("Failed to allocate memory.");
+      // fixed
+      msg_warning("Failed to allocate PRG128 context",
+            evt_tag_printf("size", "%zu", sizeof(cr_PRG128Context)));
       return NULL;
     }
   context->counter = 0;
@@ -101,12 +102,15 @@ cr_PRG128Context *cr_CreatePRG128Context(unsigned char seed[16])
 // in seed: Seed to be copied into context
 // returns pointer to cr_PRGContext
 
-cr_PRGContext *cr_CreatePRGContext(unsigned char seed[KEY_SIZE])
+cr_PRGContext *cr_CreatePRGContext(guchar seed[KEY_SIZE])
 {
   cr_PRGContext *context = g_malloc0(sizeof(cr_PRGContext));
   if (context == NULL)
     {
-      g_warning("Failed to allocate memory.");
+     // fixed
+     msg_warning("Failed to allocate PRG context",
+                  evt_tag_printf("context_size", "%zu",
+                                 sizeof(cr_PRGContext)));
       return NULL;
     }
   context->counter = 0;
@@ -128,50 +132,54 @@ cr_PRGContext *cr_CreatePRGContext(unsigned char seed[KEY_SIZE])
 //
 // returns 1 when SUCCESS else 0
 
-static int cr_under_PRG(unsigned char *seed, unsigned int *counter, const EVP_CIPHER *cipher, unsigned char *buffer,
-                        int size)
+static gint cr_under_PRG(guchar *seed, guint *counter, const EVP_CIPHER *cipher, guchar *buffer,
+                        gint size)
 {
   // calculate the number of aes blocks and ceil if it is not a multiple of the AES block size.
   double temp_m = ceil((double)size / AES_BLOCK_LEN);
-  unsigned int blocks = (unsigned int) temp_m;
-  int paddedSize = blocks * AES_BLOCK_LEN;
+  guint blocks = (guint) temp_m;
+  gint paddedSize = blocks * AES_BLOCK_LEN;
 
-  unsigned char *input = calloc(paddedSize, sizeof(unsigned char));
-  unsigned char *output = calloc(paddedSize, sizeof(unsigned char));
+  guchar *input = calloc(paddedSize, sizeof(guchar));
+  guchar *output = calloc(paddedSize, sizeof(guchar));
 
   // Each AES block contain the next higher counter sequence.
-  for (unsigned long i = 0; i < blocks; ++i)
+  for (gulong i = 0; i < blocks; ++i)
     {
-      unsigned char *destinationPtr = &input[i * AES_BLOCK_LEN];
-      unsigned long ctr = i + *counter;
+      guchar *destinationPtr = &input[i * AES_BLOCK_LEN];
+      gulong ctr = i + *counter;
 
       // Copy the unsigned long value to the block in the input buffer
-      memcpy(destinationPtr, &ctr, sizeof(unsigned long));
+      memcpy(destinationPtr, &ctr, sizeof(gulong));
     }
 
   // save to global counter.
   *counter += blocks;
 
-  int outputLen = cr_AES_encrypt(cipher, input, paddedSize, seed, NULL, output);
+  gint outputLen = cr_AES_encrypt(cipher, input, paddedSize, seed, NULL, output);
   free(input);
 
   // Validate output buffer length
   if (outputLen != paddedSize)
     {
-      g_warning("outputLen != paddedSize\n");
+      // fixed
+      msg_warning("Output length does not match padded size",
+                evt_tag_printf("output_len", "%zu", outputLen),
+                evt_tag_printf("padded_size", "%zu", paddedSize));
       free(output);
       return 0; //-- ERROR
     }
 
   if (size < 0)
     {
-      //-- NEVER EVER,  bad interfae
-      g_warning("negative size provided\n");
+      // fixed
+      msg_warning("Negative size provided",
+                evt_tag_printf("size", "%d", size));
       return 0; //--ERROR
     }
 
   // Fill result buffer, but only with the requested amount of random data.
-  memcpy(buffer, output, (unsigned int) size);
+  memcpy(buffer, output, (guint) size);
   free(output);
 
   return 1; //-- SUCCESS
@@ -189,7 +197,7 @@ static int cr_under_PRG(unsigned char *seed, unsigned int *counter, const EVP_CI
 //
 // returns 1 when SUCCESS else 0
 
-int cr_PRG128(cr_PRG128Context *ctx, unsigned char *buffer, int size)
+int cr_PRG128(cr_PRG128Context *ctx, guchar *buffer, gint size)
 {
   return cr_under_PRG(ctx->seed, &ctx->counter, EVP_aes_128_ecb(), buffer, size);
 }
@@ -206,7 +214,7 @@ int cr_PRG128(cr_PRG128Context *ctx, unsigned char *buffer, int size)
 //
 // returns 1 when SUCCESS else 0
 
-int cr_PRG(cr_PRGContext *ctx, unsigned char *buffer, int size)
+int cr_PRG(cr_PRGContext *ctx, guchar *buffer, gint size)
 {
   return cr_under_PRG(ctx->seed, &ctx->counter, EVP_aes_256_ecb(), buffer, size);
 }
@@ -225,8 +233,8 @@ int cr_PRG(cr_PRGContext *ctx, unsigned char *buffer, int size)
 //
 // returns 1 when SUCCESS else 0
 
-int cr_AES_256_CTR_encrypt(unsigned char *plaintext, int plaintextSize, unsigned char *key, unsigned char *iv,
-                           unsigned char *ciphertextBuffer)
+int cr_AES_256_CTR_encrypt(guchar *plaintext, gint plaintextSize, guchar *key, guchar *iv,
+                           guchar *ciphertextBuffer)
 {
   return cr_AES_encrypt(EVP_aes_256_ctr(), plaintext, plaintextSize, key, iv, ciphertextBuffer);
 }
@@ -246,14 +254,14 @@ int cr_AES_256_CTR_encrypt(unsigned char *plaintext, int plaintextSize, unsigned
 //
 // returns Length of plain text
 
-int cr_AES_256_CTR_decrypt(unsigned char *ciphertext, int ciphertextSize, unsigned char *key, unsigned char *iv,
-                           unsigned char *plaintextBuffer)
+int cr_AES_256_CTR_decrypt(guchar *ciphertext, gint ciphertextSize, guchar *key, guchar *iv,
+                           guchar *plaintextBuffer)
 {
   EVP_CIPHER_CTX *ctx;
 
-  int len = 0;
+  gint len = 0;
 
-  int plaintextLen;
+  gint plaintextLen;
   /* Create and initialise the context */
   if (!(ctx = EVP_CIPHER_CTX_new()))
     cr_handleErrors();
@@ -310,65 +318,61 @@ int cr_AES_256_CTR_decrypt(unsigned char *ciphertext, int ciphertextSize, unsign
 //
 // returns Length of encrypted text (0 in case of ERROR)
 
-static int cr_AES_encrypt(const EVP_CIPHER *cipher, unsigned char *plaintext, int plaintextSize, unsigned char *key,
-                          unsigned char *iv, unsigned char *ciphertextBuffer)
+static gint cr_AES_encrypt(const EVP_CIPHER *cipher,
+                           guchar *plaintext,
+                           gint plaintextSize,
+                           guchar *key,
+                           guchar *iv,
+                           guchar *ciphertextBuffer)
 {
-  EVP_CIPHER_CTX *ctx;
-  int len;
-  int ciphertextLen;
+    EVP_CIPHER_CTX *ctx;
+    gint len;
+    gint ciphertextLen;
 
-  /* Create and initialise the context */
-  if (!(ctx = EVP_CIPHER_CTX_new()))
+    ctx = EVP_CIPHER_CTX_new();
+    if (ctx == NULL)
     {
-      cr_handleErrors(); //-- TODO ugly, change interface
-      return 0;
+        msg_error("Failed to create AES cipher context");
+        return 0;
     }
 
-
-  /*
-   * Initialise the encryption operation. IMPORTANT - ensure you use a key
-   * and IV size appropriate for your cipher
-   * In this example we are using 256 bit AES (i.e. a 256 bit key). The
-   * IV size for *most* modes is the same as the block size. For AES this
-   * is 128 bits
-   */
-  if (1 != EVP_EncryptInit_ex(ctx, cipher, NULL, key, iv))
+    if (EVP_EncryptInit_ex(ctx, cipher, NULL, key, iv) != 1)
     {
-      cr_handleErrors(); //-- TODO ugly, change interface
-      return 0;
+        msg_error("Failed to initialize AES encryption");
+        EVP_CIPHER_CTX_free(ctx);
+        return 0;
     }
 
-  // Disable padding, the total amount of data encrypted or decrypted must then be a multiple of the block size or an error will occur.
-  EVP_CIPHER_CTX_set_padding(ctx, 0);
-
-  /*
-   * Provide the message to be encrypted, and obtain the encrypted output.
-   * EVP_EncryptUpdate can be called multiple times if necessary
-   */
-  if (1 != EVP_EncryptUpdate(ctx, ciphertextBuffer, &len, plaintext, plaintextSize))
+    if (EVP_CIPHER_CTX_set_padding(ctx, 0) != 1)
     {
-      cr_handleErrors(); //-- TODO ugly, change interface
-      return 0;
+        msg_error("Failed to disable AES padding");
+        EVP_CIPHER_CTX_free(ctx);
+        return 0;
     }
-  ciphertextLen = len;
 
-  /*
-   * Finalise the encryption. Further ciphertext bytes may be written at this stage.
-   */
-  if (1 != EVP_EncryptFinal_ex(ctx, ciphertextBuffer + len, &len))
+    if (EVP_EncryptUpdate(ctx, ciphertextBuffer, &len,
+                          plaintext, plaintextSize) != 1)
     {
-      cr_handleErrors(); //-- TODO ugly, change interface
-      return 0;
+        msg_error("Failed to encrypt AES data");
+        EVP_CIPHER_CTX_free(ctx);
+        return 0;
     }
-  ciphertextLen += len;
 
+    ciphertextLen = len;
 
-  /* Clean up */
-  EVP_CIPHER_CTX_free(ctx);
+    if (EVP_EncryptFinal_ex(ctx, ciphertextBuffer + len, &len) != 1)
+    {
+        msg_error("Failed to finalize AES encryption");
+        EVP_CIPHER_CTX_free(ctx);
+        return 0;
+    }
 
-  return ciphertextLen;
-}
+    ciphertextLen += len;
 
+    EVP_CIPHER_CTX_free(ctx);
+
+    return ciphertextLen;
+  }
 
 
 //----------------------------------------------------------------------
@@ -380,9 +384,9 @@ static int cr_AES_encrypt(const EVP_CIPHER *cipher, unsigned char *plaintext, in
 // in size:
 // returns 1 when number found in array else 0 when not present
 
-static int cr_exists(int element, const int arr[], size_t size)
+static gint cr_exists(gint element, const gint arr[], gsize size)
 {
-  for (size_t i = 0; i < size; ++i)
+  for (gsize i = 0; i < size; ++i)
     {
       if (arr[i] == element)
         {
@@ -393,54 +397,63 @@ static int cr_exists(int element, const int arr[], size_t size)
 }
 
 
-
 //----------------------------------------------------------------------
 // cr_UniformRandomInt
 //
 // PRG number generation and upperbound handling to eliminate the modul bias
 // in ctx: Context of cr_PRGContext
-// in upperBound:
-// returns PRG random number
+// in upperBound: upper bound for random number generation
+// out: Pointer to store the generated random number
+//
+// returns 1 on SUCCESS and 0 on FAILURE
 
-unsigned int cr_UniformRandomInt(cr_PRGContext *ctx, const unsigned int upperBound)
+int cr_UniformRandomInt(cr_PRGContext *ctx, const guint upperBound, guint *out)
 {
-  unsigned long long multipleOfUpperBound; //-- Fixed. Must be ULL, else overflow when i386!
-  unsigned int rand;
-  unsigned char *randomBuffer;
+  guint64 multipleOfUpperBound;
+  guint rand;
+  guchar *randomBuffer;
 
-  if (upperBound < 2)
+  if (out == NULL || upperBound < 2)
     {
-      g_error("PRG failed.");
-      exit(EXIT_FAILURE); //-- TODO Ugly, change Interface!
+      // fixed
+      msg_warning("Invalid arguments for cr_UniformRandomInt",
+                  evt_tag_printf("upper_bound", "%u", upperBound),
+                  evt_tag_printf("out_is_null", "%s", out == NULL ? "true" : "false"));
+      return 0; //-- ERROR
     }
 
   // eliminate the modul bias
   // https://research.kudelskisecurity.com/2020/07/28/the-definitive-guide-to-modulo-bias-and-how-to-avoid-it/
   // https://github.com/jedisct1/libsodium/blob/master/src/libsodium/randombytes/randombytes.c#L145
-  // min = (1U + ~upperBound) % upperBound;
-  // https://github.com/openbsd/src/blob/master/lib/libc/crypt/arc4random_uniform.c
-  // get the largest multiple which is less than the number of diffrent values taht can be represented by an unsigned int (2^32).
-  // in the case the upper bound is a multiple of 2^32, the condition below holds anyeay, because it has to be less than 2^32,
-  // so it will work with the largest possible unsigned int.
-
-  multipleOfUpperBound = (1ULL << 32) - ((1ULL << 32) % upperBound); //-- Fixed, i386, 1ULL (!)
-  randomBuffer = g_malloc0(sizeof(unsigned int));
-  //-- TODO Ugly: change Interface and return with error when g_malloc fails
+  multipleOfUpperBound = (1ULL << 32) - ((1ULL << 32) % upperBound);
+  
+  randomBuffer = g_malloc0(sizeof(guint));
+  if (randomBuffer == NULL)
+    {
+      // fixed
+      msg_warning("Failed to allocate memory for randomBuffer",
+                  evt_tag_printf("buffer_size", "%zu", sizeof(guint)));
+      return 0; //-- ERROR
+    }
 
   for (;;)
     {
-      if (1 != cr_PRG(ctx, randomBuffer, sizeof(unsigned int)))
+      if (1 != cr_PRG(ctx, randomBuffer, sizeof(guint)))
         {
-          g_error("PRG failed.");
-          exit(EXIT_FAILURE); //-- TODO Ugly, change Interface!
+          // fixed
+          msg_warning("PRG failed",
+                      evt_tag_printf("random_buffer_size", "%zu", sizeof(guint)));
+          g_free(randomBuffer);
+          return 0; //-- ERROR
         }
-      memcpy(&rand, randomBuffer, sizeof(unsigned int));
+      memcpy(&rand, randomBuffer, sizeof(guint));
       if (rand < multipleOfUpperBound)
         break;
     }
 
   g_free(randomBuffer);
-  return rand % upperBound;
+  *out = rand % upperBound;
+  return 1; //-- SUCCESS
 }
 
 
@@ -456,28 +469,33 @@ unsigned int cr_UniformRandomInt(cr_PRGContext *ctx, const unsigned int upperBou
 //
 // returns 1 on SUCCESS and 0 on FAILURE
 
-int cr_DRN(unsigned char seed[KEY_SIZE], const int the_k, const int upperBound, int kRandom[THE_K])
+int cr_DRN(guchar seed[KEY_SIZE], const gint the_k, const gint upperBound, gint kRandom[THE_K])
 {
-  unsigned int rand;
-  int i = 0;
+  guint rand;
+  gint i = 0;
 
 //-- BUG FIX to avoid endless while loop. Anyhow count of log lines should much greater, e.g.: at least 4096.
   if (upperBound < the_k)
     {
-      g_warning("Failed: cr_DRN, upperBound provides only %d different random numbers but the_k %d are needed at least to leave while loop!\n",
-                upperBound, the_k);
+      // fixed: msg_warning instead of g_warning
+      msg_warning("Failed: cr_DRN, upperBound provides only %d different random numbers but the_the_k %d are needed at least to leave while loop!",
+                  evt_tag_printf("upper_bound", "%d", upperBound),
+                  evt_tag_printf("the_k", "%d", the_k));
       return 0; //-- ERROR
     }
 
   if ((2 >= upperBound) && (upperBound > INT_MAX))
     {
-      g_warning("Failed: cr_DRN, upperBound %d out of range, the_k: %d\n", upperBound, the_k);
+      // fixed: msg_warning instead of g_warning
+      msg_warning("Failed: cr_DRN, upperBound out of range",
+                  evt_tag_printf("upper_bound", "%d", upperBound),
+                  evt_tag_printf("the_k", "%d", the_k));
       return 0; //-- ERROR
     }
 
   // Fill the array with -1
   // thats why the upper bound cant be larger than int_max
-  for (int r = 0; r < the_k; ++r)
+  for (gint r = 0; r < the_k; ++r)
     {
       kRandom[r] = -1;
     }
@@ -485,7 +503,8 @@ int cr_DRN(unsigned char seed[KEY_SIZE], const int the_k, const int upperBound, 
   cr_PRGContext *ctx = cr_CreatePRGContext(seed);
   if (NULL == ctx)
     {
-      g_warning("Failed: cr_DRN, ctx is NULL!\n");
+      // fixed: msg_warning instead of g_warning
+      msg_warning("Failed: cr_DRN, ctx is NULL!\n");
       return 0; //-- ERROR
     }
 
@@ -494,11 +513,18 @@ int cr_DRN(unsigned char seed[KEY_SIZE], const int the_k, const int upperBound, 
   while (i < the_k)
     {
       //-- rand % upperbound so upperBound must be >= the_k else endless loop while
-      rand = cr_UniformRandomInt(ctx, upperBound); //-- fixed, for i386 old code ..
+      guint rand;
+      if (!cr_UniformRandomInt(ctx, upperBound, &rand))
+        {
+          // fixed: msg_warning instead of g_warning
+          msg_warning("Failed to generate random number.");
+          g_free(ctx);
+          return 0;
+        }
       // .. overflows and rand was not changing and caused an endless loop here!
 
       // check if the random number already exists in the arra of k random numbers.
-      if (!cr_exists(rand, kRandom, (size_t) (unsigned int) the_k))
+      if (!cr_exists(rand, kRandom, (gsize) (guint) the_k))
         {
           kRandom[i] = rand;
           i++;
@@ -507,7 +533,8 @@ int cr_DRN(unsigned char seed[KEY_SIZE], const int the_k, const int upperBound, 
       //-- ensure no endless loop when rand generation is wrong
       if (LEAVE_LOOP < ++a)
         {
-          g_warning("Failed: cr_DRN, rand does not change!\n");
+          // fixed: msg_warning instead of g_warning
+          msg_warning("Failed: cr_DRN, rand does not change!\n");
           g_free(ctx);
           return 0; //-- ERROR
         }
@@ -524,12 +551,12 @@ int cr_DRN(unsigned char seed[KEY_SIZE], const int the_k, const int upperBound, 
  1. CMAC, which returns a 128bit MAC tag which will than be used as key for a
  2. AES-128-ECB encryption of a counter.
  */
-int cr_PRF(unsigned char *input, size_t inputSize, unsigned char *key, unsigned char *output, uint8_t outputSize)
+int cr_PRF(guchar *input, gsize inputSize, guchar *key, guchar *output, guint8 outputSize)
 {
-  size_t outputLenCMAC;
+  gsize outputLenCMAC;
 
   // add a byte for the outputSize, max len for the outputSize is 2^8 = 128
-  unsigned char _input[inputSize + 1], seed[16];
+  guchar _input[inputSize + 1], seed[16];
   memcpy(_input, input, inputSize);
 
   // The output size is an input value of the PRF, and should therefore change the output of the PRF the same way, as the key or input, would do.
@@ -538,7 +565,8 @@ int cr_PRF(unsigned char *input, size_t inputSize, unsigned char *key, unsigned 
 
   if (!cr_CMAC(key, _input, inputSize, seed, &outputLenCMAC, CMAC_LEN))
     {
-      g_warning("Failed to create CMAC as seed for a PRG as output for the variable PRF.");
+      // fixed: msg_warning instead of g_warning
+      msg_warning("Failed to create CMAC as seed for a PRG as output for the variable PRF.");
       return 0;
     }
 
@@ -546,12 +574,14 @@ int cr_PRF(unsigned char *input, size_t inputSize, unsigned char *key, unsigned 
   cr_PRG128Context *ctx = cr_CreatePRG128Context(seed);
   if (NULL == ctx)
     {
-      g_warning("Failed: ctx is NULL.");
+      // fixed: msg_warning instead of g_warning
+      msg_warning("Failed: ctx is NULL.");
       return 0;
     }
   if (!cr_PRG128(ctx, output, outputSize))
     {
-      g_warning("Failed to create PRF output, when using PRG.");
+      // fixed: msg_warning instead of g_warning
+      msg_warning("Failed to create PRF output, when using PRG.");
       g_free(ctx);
       return 0;
     }
@@ -562,54 +592,70 @@ int cr_PRF(unsigned char *input, size_t inputSize, unsigned char *key, unsigned 
 
 
 
-int cr_KeyEvolution(unsigned char *key, unsigned char *nextKey)
+int cr_KeyEvolution(guchar *key, guchar *nextKey)
 {
   return cr_PRF(GAMMA, 32, key, nextKey, KEY_SIZE);
 }
 
 
 
-int cr_DeriveSubKeys(unsigned char masterSessionkey[KEY_SIZE], unsigned char encKey[KEY_SIZE],
-                     unsigned char drnKey[KEY_SIZE], unsigned char tagKey[KEY_SIZE], unsigned char idKey[KEY_SIZE])
+int cr_DeriveSubKeys(guchar masterSessionkey[KEY_SIZE], guchar encKey[KEY_SIZE],
+                     guchar drnKey[KEY_SIZE], guchar tagKey[KEY_SIZE], guchar idKey[KEY_SIZE])
 {
   cr_PRGContext *ctx = cr_CreatePRGContext(masterSessionkey);
-  unsigned char *output = calloc(4 * KEY_SIZE, 1);
+  guchar *output = g_calloc(4, KEY_SIZE);
 
-  if (cr_PRG(ctx, output, 4 * KEY_SIZE) != 1)
+  // fixed: Warning for memory allocation
+  if (ctx == NULL || output == NULL)
     {
-      g_warning("Failed to derive sub keys.");
+      msg_warning("Failed to allocate memory for subkey derivation",
+                  evt_tag_printf("output_size", "%zu", 4 * sizeof(guchar)));
+      g_free(ctx);
+      g_free(output);
       return 0;
     }
+
+  // fixed: msg_warning instead of g_warning
+  if (cr_PRG(ctx, output, 4 * KEY_SIZE) != 1)
+    {
+      msg_warning("Failed to derive subkeys");
+      g_free(ctx);
+      g_free(output);
+      return 0;
+    }
+
   memcpy(encKey, output, KEY_SIZE);
   memcpy(drnKey, output + KEY_SIZE, KEY_SIZE);
   memcpy(tagKey, output + (2 * KEY_SIZE), KEY_SIZE);
   memcpy(idKey, output + (3 * KEY_SIZE), KEY_SIZE);
 
-  free(ctx);
-  free(output);
+  g_free(ctx);
+  g_free(output);
+
   return 1;
 }
 
 
-int cr_GenerateMasterKey(unsigned char *masterKey)
+int cr_GenerateMasterKey(guchar *masterKey)
 {
   return RAND_bytes(masterKey, KEY_SIZE);
 }
 
 
-int cr_GenerateIV(unsigned char *iv)
+int cr_GenerateIV(guchar *iv)
 {
   return RAND_bytes(iv, IV_SIZE);
 }
 
 
-int cr_CMAC(unsigned char *key, unsigned char *input, size_t inputSize, unsigned char *output, size_t *outputSize,
-            size_t maxOutputSize/* Prevent buffer overflows, in the case that the maximal possible outbut buffer size is smaler than the actual output buffer. */)
+int cr_CMAC(guchar *key, guchar *input, gsize inputSize, guchar *output, gsize *outputSize,
+            gsize maxOutputSize/* Prevent buffer overflows, in the case that the maximal possible outbut buffer size is smaler than the actual output buffer. */)
 {
   EVP_MAC *mac = EVP_MAC_fetch(NULL, "CMAC", NULL);
   if (mac == NULL)
     {
-      g_warning("Failed to fetch CMAC.");
+      // fixed: msg_warning
+      msg_warning("Failed to fetch CMAC");
       return 0; //-- ERROR
     }
 
@@ -617,7 +663,8 @@ int cr_CMAC(unsigned char *key, unsigned char *input, size_t inputSize, unsigned
 
   if (!ctx)
     {
-      g_warning("Failed to create MAC ctx.");
+      // fixed: msg_warning
+      msg_warning("Failed to create MAC ctx.");
       EVP_MAC_free(mac);
       return 0; //-- ERROR
     }
@@ -631,7 +678,8 @@ int cr_CMAC(unsigned char *key, unsigned char *input, size_t inputSize, unsigned
   // braucht einen Array, nicht nur ein pointer auf einen Parameter.
   if (EVP_MAC_CTX_set_params(ctx, params) != 1)
     {
-      g_error("Failed to set parameter.");
+      // fixed: msg_warning
+      msg_error("Failed to set CMAC parameters");
       // free
       EVP_MAC_CTX_free(ctx);
       EVP_MAC_free(mac);
@@ -640,7 +688,7 @@ int cr_CMAC(unsigned char *key, unsigned char *input, size_t inputSize, unsigned
 
   if (EVP_MAC_init(ctx, key, KEY_SIZE, NULL) != 1)
     {
-      g_error("Failed to init CMAC.");
+      msg_error("Failed to init CMAC.");
       // free
       EVP_MAC_CTX_free(ctx);
       EVP_MAC_free(mac);
@@ -649,7 +697,7 @@ int cr_CMAC(unsigned char *key, unsigned char *input, size_t inputSize, unsigned
 
   if (EVP_MAC_update(ctx, input, inputSize) != 1)
     {
-      g_error("Failed to update CMAC.");
+      msg_error("Failed to update CMAC.");
       // free
       EVP_MAC_CTX_free(ctx);
       EVP_MAC_free(mac);
@@ -659,7 +707,8 @@ int cr_CMAC(unsigned char *key, unsigned char *input, size_t inputSize, unsigned
   // If the maxOutputSize is to small, to hold the output -> the mission will be aborted.
   if (EVP_MAC_final(ctx, output, outputSize, maxOutputSize) != 1)
     {
-      g_error("Failed to create CMAC.");
+      msg_error("Failed to create CMAC.", 
+        evt_tag_printf("max_output_size", "%zu", maxOutputSize));
       // free
       EVP_MAC_CTX_free(ctx);
       EVP_MAC_free(mac);
@@ -673,12 +722,9 @@ int cr_CMAC(unsigned char *key, unsigned char *input, size_t inputSize, unsigned
 }
 
 
-
 void cr_handleErrors(void)
 {
-  g_error("cr_crypto.c, cr_handleErrors\n"); //-- TODO consider better interface without coredump
-
-  ERR_print_errors_fp(stderr);
+  msg_error("Cryptographic operation failed");
   abort();
 }
 

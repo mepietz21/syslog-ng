@@ -39,7 +39,7 @@ static CfgLexerKeyword cr_destination_keywords[] =
   { "keypath", KW_CR_KEYPATH, KWS_NORMAL, "Crash recovery key path"  },
   { "dir", KW_CR_DIR, KWS_NORMAL, "Working directory crash recovery" },
   { "logrotcnt", KW_CR_LOGROTCNT, KWS_NORMAL, "Log rotation max lines" },
-  { "mode", KW_CR_MODE, KWS_NORMAL, "Log modes: plain_only, enc_only, plain_enc" },
+  { "mode", KW_CR_MODE, KWS_NORMAL, "Log modes: direct, enc, base64" },
   { 0 }
 };
 

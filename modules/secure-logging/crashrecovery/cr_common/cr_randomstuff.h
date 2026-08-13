@@ -25,8 +25,10 @@
 #ifndef cr_randomstuff_h
 #define cr_randomstuff_h
 
+#include <glib.h>
+
 //-- allocates and provides k pseudo random numbers
 //   returns NULL in case of ERROR
-size_t *cr_distinctRandomEz(size_t range, int k, int seed);
+gsize *cr_distinctRandomEz(gsize range, gint k, gint seed);
 
 #endif /* cr_randomstuff_h */

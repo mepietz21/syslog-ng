@@ -25,6 +25,7 @@
 #ifndef cr_pi_types_h
 #define cr_pi_types_h
 
+#include <glib.h>
 #include <stdio.h>
 #include <string.h>
 #include "cr_pi_shared.h"
@@ -42,12 +43,11 @@ typedef struct _cr_VerifierContext
   char outPlainFilePath[PATH_MAX]; /* decrypted plain log file (== output of Verifier) */
   char outProtocolPath[PATH_MAX + 10]; /* protocol (== output of Verifier) */
   char masterKeyPath[PATH_MAX];
-  int n; /* max number of log entries. */
-  int m; /* log file length. */
+  gsize n; /* max number of log entries. */
+  gsize m; /* log file length. */
   gboolean useMetal; /* indicator to use GPU oder CPU */
   FILE *protocolFile; /* used in several files */
 } cr_VerifierContext;
-
 
 /* typedef std::array<unsigned char, KEY_SIZE> KEY_TYPE; */
 typedef unsigned char cr_KEY_TYPE[KEY_SIZE];
@@ -64,8 +64,8 @@ typedef struct _cr_Keys
 typedef struct _cr_KeyStoreEntry
 {
   cr_Keys Ki;
-  int i;
-  int lj;
+  gint i;
+  gint lj;
 } cr_KeyStoreEntry;
 
 

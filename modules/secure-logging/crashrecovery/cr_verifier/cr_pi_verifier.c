@@ -56,7 +56,8 @@ void cr_set_result(cr_Result *res, int code, gboolean success)
 {
   if (NULL == res)
     {
-      g_critical("Invalid pointer in set_result!\n");
+      // fixed from g_critical to msg_fatal
+      msg_fatal("Invalid result pointer in cr_set_result");
       return;
     }
   res->code = code;
@@ -143,7 +144,8 @@ void print_KeyStore_value_pair(gpointer keyVoid, gpointer valueVoid, gpointer us
   (void)user_data; // Unused parameter
   if ((NULL == keyVoid) || (NULL == valueVoid))
     {
-      g_critical("failed: print_KeyStore_value_pair called with invalid pointer\n");
+      // fixed from g_critical to msg_fatal
+      msg_fatal("Invalid pointer in print_KeyStore_value_pair");
       return;
     }
 
@@ -178,7 +180,8 @@ void print_key_from_ght_KeyStore(gpointer keyVoid, gpointer user_data)
   (void) user_data; // Unused parameter
   if (NULL == keyVoid)
     {
-      g_critical("failed: print_key_from_ght_KeyStore, invalid pointer\n");
+      // fixed from g_critical to msg_fatal
+      msg_fatal("Invalid key pointer in print_key_from_ght_KeyStore");
       return;
     }
 
@@ -224,7 +227,7 @@ gboolean id_type_buffer_equal(gconstpointer a, gconstpointer b)
 {
   if ((NULL == a) || (NULL == b))
     {
-      g_critical("failed: id_type_buffer_eqaul called with invalid pointer\n");
+      msg_fatal("Invalid pointer in id_type_buffer_equal");
       return FALSE;
     }
   return memcmp(a, b, ID_LEN) == 0;
@@ -316,7 +319,7 @@ cr_Result cr_Verify(cr_VerifierContext *ctx)
 
   if (NULL == ctx)
     {
-      g_warning("cr_Verify: invalid pointer ctx!\n");
+      msg_fatal("Invalid verifier context");
       return res;
     }
 
@@ -354,7 +357,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
   if ((NULL == ctx) || (NULL == ctx->protocolFile))
     {
 
-      g_warning("ERROR: Context pointer invalid!\n");
+      msg_warning("Invalid verifier context or protocol file");
       cr_set_result(&res, 0, FALSE);
       return res;
     }
@@ -379,7 +382,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
   FILE *logFileEnc; //-- std::ifstream logFile(path, std::ios::binary); // this is our log file :*
   if ((logFileEnc = fopen(ctx->inEncFilePath, "rb")) == NULL) //-- if (!logFile.is_open()) {
     {
-      g_warning("Failed to open the log file %s!\n", ctx->inEncFilePath);
+      msg_error("Failed to open input log file", evt_tag_str("path", ctx->inEncFilePath));
       cr_set_result(&res, 0, FALSE);
       return res;
     }
@@ -426,7 +429,8 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
   gboolean is_key = cr_readMasterKey(ctx->masterKeyPath, k0);
   if (FALSE == is_key)
     {
-      g_warning("cr_readMasterKey fails");
+      msg_error("Failed to read master key", 
+                evt_tag_str("path", ctx->masterKeyPath));
       cr_set_result(&res, 0, FALSE);
       (void) fprintf(ctx->protocolFile, "ERROR: Failed to read master key %s\n", ctx->masterKeyPath);
       goto LABEL_CLEANUP;
@@ -449,7 +453,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
       // line 2
       if (0 == cr_KeyEvolution(Ki, Ki))
         {
-          g_warning("Key Evolution failed!\n");
+          msg_error("Key evolution failed");
           cr_set_result(&res, 0, FALSE);
           (void) fprintf(ctx->protocolFile, "%s", "ERROR: Failed key evolution\n");
           goto LABEL_CLEANUP;
@@ -457,7 +461,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
       // derive all sub keys, and store them.
       if (0 == cr_DeriveSubKeys(Ki, encKey, drnKey, tagKey, idKey))
         {
-          g_warning("Failed to derive sub keys!\n");
+          msg_error("Failed to derive sub keys");
           cr_set_result(&res, 0, FALSE);
           (void) fprintf(ctx->protocolFile, "%s", "ERROR: Failed derive sub keys\n");
           goto LABEL_CLEANUP;
@@ -472,7 +476,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
       //g_print("cr_DRN, line 3\n");
       if (0 == cr_DRN(drnKey, THE_K, ctx->m, kRandom)) //-- Note: verified: ctx->m
         {
-          g_warning("Failed to create k distinct random numbers!\n");
+          msg_error("Failed to create distinct random locations");
           cr_set_result(&res, 0, FALSE);
           (void) fprintf(ctx->protocolFile, "%s", "ERROR: Failed to create k distinct random numbers\n");
           goto LABEL_CLEANUP;
@@ -495,7 +499,8 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
           //g_print("cr_CreateID, line 5\n");
           if (0 == cr_CreateID(idKey, j, *p_ID))
             {
-              g_warning("Failed to createID!\n");
+              msg_error("Failed to create ID", 
+                        evt_tag_int("key_index", j));
               cr_set_result(&res, 0, FALSE);
               (void) fprintf(ctx->protocolFile, "%s", "ERROR: Failed to create ID\n");
               goto LABEL_CLEANUP;
@@ -534,27 +539,37 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
       // Use fseeko, the large-file-aware version of fseek
       if (fseeko(logFileEnc, offset, SEEK_SET) != 0)
         {
-          g_warning("WARNING: Failed to seek to position %lld in file '%s': %s", (long long)offset, ctx->inEncFilePath,
-                    g_strerror(errno));
-          (void) fprintf(ctx->protocolFile, "%s", "WARNING: Failed to read from encrypted input file\n");
+          msg_error("Failed to seek in encrypted input log file", 
+                    evt_tag_str("path", ctx->inEncFilePath), 
+                    evt_tag_int("entry", i), 
+                    evt_tag_int64("offset", (gint64)offset));
+
+          (void) fprintf(ctx->protocolFile, 
+                        "%s", 
+                        "WARNING: Failed to read from encrypted input file\n");
           break; // Stop processing further entries
         }
 
       //-- logFile.read(reinterpret_cast<char*>(log.data()), LOG_LEN);
-      size_t bytes_read = fread(entry, sizeof(guchar), LOG_LEN, logFileEnc);
+      gsize bytes_read = fread(entry, sizeof(guchar), LOG_LEN, logFileEnc);
       if (bytes_read < LOG_LEN)
         {
           if (feof(logFileEnc))
             {
-              g_warning("WARNING: Reached end of file unexpectedly while reading entry %d. Read %zu of %d bytes.", i, bytes_read,
-                        LOG_LEN);
+              msg_warning("Unexpected end of encrypted input log file", 
+                          evt_tag_str("path", ctx->inEncFilePath), 
+                          evt_tag_int("entry", i), 
+                          evt_tag_int("bytes_read", (gint)bytes_read), 
+                          evt_tag_int("expected_bytes", LOG_LEN));
               (void) fprintf(ctx->protocolFile, "WARNING: Reached end of file unexpectedly while reading entry %d.\n", i);
             }
-          else if (ferror(logFileEnc))
-            {
-              (void) fprintf(ctx->protocolFile, "WARNING: File read error occurred while reading entry %d: %s.\n", i,
-                             g_strerror(errno));
-              g_warning("WARNING: File read error occurred while reading entry %d: %s", i, g_strerror(errno));
+          else if (ferror(logFileEnc)) 
+            { 
+              msg_error("Failed to read encrypted input log file", 
+                        evt_tag_str("path", ctx->inEncFilePath), 
+                        evt_tag_int("entry", i)); 
+                
+              (void) fprintf(ctx->protocolFile, "ERROR: File read error occurred while reading " "entry %d: %s.\n", i, g_strerror(errno)); 
             }
           break; //-- Stop processing further entries
         }
@@ -618,7 +633,10 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
       char szErrorMsg[] =
         "ERROR - Wrong key? Algorithm 3: ListItems(DS,K0,n), line 12, \"if rank = 0 then output \xE2\x8A\xA5\"\n"; //-- up tack: E2 8A A5
       g_print("%s", szErrorMsg);
-      g_warning("%s", szErrorMsg);
+
+      msg_error("Verification failed: rank is zero", 
+                evt_tag_str("reason", "wrong key or invalid/tampered log"));
+
       cr_set_result(&res, 0, FALSE);
       (void) fprintf(ctx->protocolFile, "%s", szErrorMsg);
       goto LABEL_CLEANUP;
@@ -649,7 +667,9 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
           cr_Random *p_drnsvalue = g_hash_table_lookup(ght_drns, GINT_TO_POINTER(i));
           if (NULL == p_drnsvalue)
             {
-              g_warning("g_hash_table_lookup for %d returns value NULL.\n", i);
+              msg_error("Missing random locations for log iteration", 
+                        evt_tag_int("iteration", i));
+
               cr_set_result(&res, 0, FALSE);
               (void) fprintf(ctx->protocolFile, "ERROR: g_hash_table_lookup for %d returns value NULL\n", i);
               goto LABEL_CLEANUP;
@@ -661,8 +681,28 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
           //-- KeyStoreEntry kse = KeyStore[Tau[lj].ID];
           if (lj >= garr_Tau->len)
             {
-              g_print("check index lj-1, line 18, Tau[lj].ID, out of range, lj: %d, garr_Tau->len: %d\n", lj, garr_Tau->len);
+              // fixed: Out-of-Bounds + NULL Pointer were possible
+              // old: g_print("check index lj-1, line 18, Tau[lj].ID, out of range, ...");
+
+              if (lj >= garr_Tau->len) { 
+                msg_error("Random location is outside log range", 
+                          evt_tag_uint("location", lj), 
+                          evt_tag_uint("log_entries", garr_Tau->len), 
+                          evt_tag_int("iteration", i), 
+                          evt_tag_int("random_index", j)); 
+                  
+              (void) fprintf(ctx->protocolFile, 
+                            "ERROR: Tau index out of range, " 
+                            "lj: %u, garr_Tau->len: %u\n", 
+                            lj, 
+                            garr_Tau->len); 
+                
+              cr_set_result(&res, 0, FALSE); 
+              goto LABEL_CLEANUP; 
+
+              }
             }
+
           cr_Tau_i tau_lj = g_array_index(garr_Tau, cr_Tau_i, lj);
           //-- Node: The returned tau_lj might be empty, if so, kse has to be created!
           // gboolean is_empty_tau_lj = is_equal_nullvector(tau_lj.ID, sizeof(cr_ID_TYPE), TRUE);
@@ -670,7 +710,10 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
           cr_KeyStoreEntry *p_kse = g_hash_table_lookup(ght_KeyStore, tau_lj.ID);
           if (NULL == p_kse)
             {
-              g_warning("Nice. Here we do have an ID which should not exist!\n");
+              msg_warning("Log entry references unknown key ID", 
+                          evt_tag_int("iteration", i), 
+                          evt_tag_int("location", j));
+
               // This can happen when log file provides less lines then ctx->n
               //p_kse = (cr_KeyStoreEntry *) g_malloc0(sizeof(cr_KeyStoreEntry));
               // above cr_KeyStoreEntry kse_temp_not_in_KeyStore;
@@ -693,7 +736,9 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
 
           if (0 == cr_CreateIntegrityTag(p_kse->Ki.TagKey, tau_lj.XOR, _TAG))
             {
-              g_warning("Failed to create the integrity tag.\n");
+              msg_error("Failed to create integrity tag", 
+                        evt_tag_int("iteration", i), 
+                        evt_tag_int("location", j));
               cr_set_result(&res, 0, FALSE);
               (void) fprintf(ctx->protocolFile, "%s", "ERROR: Failed to create the integrity tag\n");
               goto LABEL_CLEANUP;
@@ -728,7 +773,10 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
 
           if (FALSE == is_equal_nullvector(tau_lj.XOR, sizeof(cr_XOR_TYPE), TRUE))
             {
-              g_print("Line %u has been tampered!\n", lj);
+              // fixed, old: g_print
+              msg_warning("Log line has been tampered", 
+                          evt_tag_uint("line", lj));
+
               (void) fprintf(ctx->protocolFile, "INFO: Line %u has been tampered!\n", lj);
             }
 
@@ -753,7 +801,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
   cr_PRGContext *prgCtx = cr_CreatePRGContext(k0);
   if (NULL == prgCtx)
     {
-      g_warning("ERROR: prgCtx is NULL!\n");
+      msg_error("Failed to create PRG context");
       cr_set_result(&res, 0, FALSE);
       (void) fprintf(ctx->protocolFile, "%s", "ERROR: prgCtx is NULL!\n");
       goto LABEL_CLEANUP;
@@ -771,9 +819,12 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
         {
           g_free(prgCtx);
           prgCtx = NULL;
-          g_warning("ERROR: Creating random PAD.\n");
+          msg_error("Failed to create random pad");
           cr_set_result(&res, 0, FALSE);
-          (void) fprintf(ctx->protocolFile, "%s", "ERROR: Failed to creatd random PAD!\n");
+          (void) fprintf(ctx->protocolFile, 
+                        "%s", 
+                        "ERROR: Failed to creatd random PAD!\n");
+
           goto LABEL_CLEANUP;
         }
       // It is important to generate the PRG output first, and abort the iteration after, otherwise the internal state (counter) differs from the original state.
@@ -822,12 +873,13 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
   //GPtrArray *gpa_v = g_ptr_array_new();
   gpa_v = g_ptr_array_new();
   g_ptr_array_set_size(gpa_v, v_length);
-  size_t total_size = v_length * sizeof(cr_XOR_TYPE);
+  gsize total_size = v_length * sizeof(cr_XOR_TYPE);
   //cr_XOR_TYPE *data_block = (cr_XOR_TYPE *)aligned_alloc(AVX2_ALIGNMENT, total_size);
   data_block = (cr_XOR_TYPE *)aligned_alloc(AVX2_ALIGNMENT, total_size);
   if (NULL == data_block)
     {
-      g_warning("ERROR: Creating aligned data block for gpa_v.\n");
+      msg_error("Failed to create aligned data block", 
+                evt_tag_uint("size", total_size));
       cr_set_result(&res, 0, FALSE);
       (void) fprintf(ctx->protocolFile, "%s", "ERROR: Failed to create aligned data block for gpa_v!\n");
       goto LABEL_CLEANUP;
@@ -864,7 +916,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
   // choose metal or CPU:
   if (ctx->useMetal)
     {
-      g_critical( "Metal is not supported here. Code has been ported from C++ to C. The flag ctx->useMetal is ignored!\n");
+      msg_warning("Metal is not supported; using CPU implementation");
       //-- ignore wrongly set flag
     }
 
@@ -894,7 +946,8 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
   resultLogFile = fopen(ctx->outPlainFilePath, "w");
   if (NULL == resultLogFile)
     {
-      g_warning("Can not create output file by resultPath!\n");
+      msg_error("Failed to create output log file", 
+                evt_tag_str("path", ctx->outPlainFilePath));
       cr_set_result(&res, 0, FALSE);
       (void) fprintf(ctx->protocolFile, "ERROR: Failed to create output file %s\n", ctx->outPlainFilePath);
       goto LABEL_CLEANUP;
@@ -990,7 +1043,8 @@ LABEL_CLEANUP:
     }
 
   //g_print("Clean up 5\n");
-  if (NULL != gpa_v)
+  //if (NULL != gpa_v) fixed
+  if (NULL != gpa_c)
     {
       free_GPtrArray_cr_XOR_TYPE(&gpa_c);
     }
@@ -1044,8 +1098,8 @@ GString *cr_decryptLog(cr_KEY_TYPE key, cr_XOR_TYPE encLogMessage)
   unsigned char ciphertext[MESSAGE_LEN_SLOGCR];
   unsigned char mac[MAC_LEN];
   unsigned char referenceMac[MAC_LEN];
-  size_t len;
-  size_t macLen;
+  gsize len;
+  gsize macLen;
 
   GString *gslog = g_string_new("");
   memset(referenceMac, 0, MAC_LEN);
@@ -1062,18 +1116,18 @@ GString *cr_decryptLog(cr_KEY_TYPE key, cr_XOR_TYPE encLogMessage)
   /* CMAC(key.data(), ciphertext.data(), MESSAGE_LEN_SLOGCR, referenceMAC.data(), &macLen, MAC_LEN); */
   if ( ! cr_CMAC(key, ciphertext, MESSAGE_LEN_SLOGCR, referenceMac, &macLen, MAC_LEN))
     {
-      g_warning("ERROR: cr_decryptLog, cr_CMAC fails!\n");
+      msg_error("ERROR: cr_decryptLog, cr_CMAC fails!\n");
     }
 
   if (MAC_LEN != macLen)
     {
-      g_warning("Failed: cr_decryptLog, Creating MAC failed!\n");
+      msg_error("Failed: cr_decryptLog, Creating MAC failed!\n");
       //exit(EXIT_FAILURE);
     }
 
   if (0 != memcmp(mac, referenceMac, MAC_LEN))
     {
-      g_warning("Invalid MAC detected!\n");
+      msg_error("Invalid MAC detected!\n");
       return gslog;
     }
 
@@ -1083,8 +1137,10 @@ GString *cr_decryptLog(cr_KEY_TYPE key, cr_XOR_TYPE encLogMessage)
   len = cr_AES_256_CTR_decrypt(ciphertext, MESSAGE_LEN_SLOGCR, key, iv, logm);
   if (MESSAGE_LEN_SLOGCR != len)
     {
-      g_warning("Log decryption failed! Wrong len: %ld\n", len);
-      //exit(EXIT_FAILURE);
+      msg_error("Log decryption failed", 
+                evt_tag_int("expected_length", MESSAGE_LEN_SLOGCR), 
+                evt_tag_int("actual_length", len));
+      return gslog; // fixed: function should return an empty GString on failure
     }
   g_string_append(gslog, (const gchar *) logm);
   return gslog;
@@ -1104,7 +1160,8 @@ gboolean cr_readMasterKey(const char *path, unsigned char key[KEY_SIZE])
 {
   if (NULL == path)
     {
-      g_warning("Failed read master path: invalid path given.\n");
+      msg_error("Failed to read master key", 
+                evt_tag_str("reason", "invalid path"));
       return FALSE;
     }
   char szPath[PATH_MAX];
@@ -1113,13 +1170,15 @@ gboolean cr_readMasterKey(const char *path, unsigned char key[KEY_SIZE])
   FILE *file = fopen(szPath, "rb");
   if (!file)
     {
-      g_warning("Failed to open the key file %s.\n", szPath);
+      msg_error("Failed to open master key file", 
+                evt_tag_str("path", szPath));
       return FALSE;
     }
   if (fread(key, 1, KEY_SIZE, file) != KEY_SIZE)
     {
-      g_print("cr_readMasterKey: fread can not read KEY_SIZE (%d) bytes from file %s\n", KEY_SIZE, szPath);
-      g_warning("Failed to read master the key!");
+      msg_error("Failed to read master key", 
+                evt_tag_str("path", szPath), 
+                evt_tag_int("expected_length", KEY_SIZE));
       fclose(file);
       return FALSE;
     }
@@ -1134,16 +1193,17 @@ gboolean cr_readMasterKey(const char *path, unsigned char key[KEY_SIZE])
 //
 // return TRUE when buffer contains only of zeros else FALSE
 
-gboolean is_equal_nullvector(unsigned char *buf, size_t len, gboolean debug)
+gboolean is_equal_nullvector(unsigned char *buf, gsize len, gboolean debug)
 {
   if (NULL == buf)
     {
-      g_critical("failed: is_equal_nullvector. NULL pointer provided!\n");
+      msg_error("Failed to check null vector", 
+                evt_tag_str("reason", "NULL buffer"));
       return TRUE; //-- Handle NULL pointer as a nullvector
     }
 
   //-- Iterate through the buffer until first none zero
-  for (size_t i = 0; i < len; i++)
+  for (gsize i = 0; i < len; i++)
     {
       if (buf[i] != 0)
         {
@@ -1187,7 +1247,8 @@ gboolean cr_check_cpu_cfg(void)
 
   if ((0 == sum_value) || (1 < sum_value))
     {
-      g_critical("Wrong preprocessor cfg. Check CPU_AVX2, CPU_SSE2 or CPU_OTHER. One and only one must be set to 1 and the others must be set to 0.\n");
+      msg_error("Invalid CPU configuration", 
+                evt_tag_int("configured_cpu_options", sum_value));
       return FALSE; //-- ERROR
     }
   return TRUE;
@@ -1213,7 +1274,8 @@ void cr_print_cpu_cfg(void)
   g_print("Neither CPU_AVX2 nor CPU_SSE2 was active\n");
 #else
   // #error "No valid XOR implementation defined!"
-  g_critical("No valid CPU configuration defined!");
+  msg_error("No valid CPU configuration defined", 
+            evt_tag_str("reason", "Check CPU_AVX2, CPU_SSE2 and CPU_OTHER"));
 #endif
 }
 
@@ -1250,7 +1312,9 @@ GString *get_cpu_config_info(gboolean is_add_new_line)
   g_string_append_printf(gstr, "Neither AVX2 nor SSE2 CPU optimization is active");
 #else
   //-- ERROR
-  g_critical("No valid CPU configuration defined! Check config.h\n");
+  msg_error("No valid CPU configuration defined", 
+            evt_tag_str("reason", "Check CPU_AVX2, CPU_SSE2 and CPU_OTHER"));
+            
   g_string_append_printf(gstr, "\nNo valid CPU configuraton defined!\n \
                          Preprocessors CPU_AVX2, CPU_SSE2 and CPU_OTHER must be defined!\n \
                          And only one of them must be set to 1 whereas others are to be set to 0.\n\n");

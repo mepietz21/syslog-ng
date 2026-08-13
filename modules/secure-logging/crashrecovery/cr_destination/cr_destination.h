@@ -37,6 +37,12 @@
 #include "cr_pi_logger.h"
 #include "cr_pi_logger_context.h"
 
+typedef enum
+{
+  CR_LOGMODE_DIRECT = 0,
+  CR_LOGMODE_BASE64,
+  CR_LOGMODE_ENC
+} CrLogMode;
 
 typedef struct
 {
@@ -50,6 +56,8 @@ typedef struct
   gsize n_message_count;        /* The shared, global counter */
   gsize n_logrotcnt;  /* log rotation by number of entries */
   gsize n_current_part;         /* The current file sequence number (part1, part2, etc.) */
+
+  CrLogMode log_mode;
 
   /* Crash Recovery */
   cr_pi_logger_context loggerctx;

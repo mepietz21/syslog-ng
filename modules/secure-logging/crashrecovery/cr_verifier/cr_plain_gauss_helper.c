@@ -113,18 +113,18 @@ void add_to_protocol_timediff(cr_VerifierContext *ctx, uint64_t ndiff, const cha
 #if defined(CPU_AVX2) && (CPU_AVX2 == 1)
 __attribute__((target("avx2")))
 #endif
-void xor_buffers(void *buf_a, const void *buf_b, size_t len)
+void xor_buffers(void *buf_a, const void *buf_b, gsize len)
 {
   if (!buf_a || !buf_b)
     {
-      g_error("invalid pointer(s): a: %p, b: %p\n", buf_a, buf_b);
+      msg_error("invalid pointer(s): a: %p, b: %p", buf_a, buf_b);
       return; // g_error likely terminates, but good practice to return
     }
 
   //-- Use pointers to 8-bit integers for byte-level access
   uint8_t *p_a = (uint8_t *)buf_a;
   const uint8_t *p_b = (const uint8_t *)buf_b;
-  size_t i = 0;
+  gsize i = 0;
 
 #if defined(CPU_AVX2) && (CPU_AVX2 == 1)
   //-- Process 32-byte chunks with AVX2
@@ -184,12 +184,13 @@ GPtrArray *cr_pgh_Solve(struct cr_BMatrixType *Mat, GPtrArray *gpa, gboolean deb
 {
   if ((NULL == Mat) || (NULL == gpa))
     {
-      g_warning("cr_pgh_Solve, ERROR, Nullpointer, Mat: %p, gpa: %p\n", (void *) Mat, (void *) gpa);
-      return NULL;
+      msg_warning("cr_pgh_Solve, ERROR, Nullpointer, Mat: %p, gpa: %p",
+                  (void *)Mat, (void *)gpa);
     }
-  g_print("cr_pgh_Solve, Mat->rows: %d, Mat->colsInBits: %d, Mat->buckets: %d, gpa->len: %d\n", Mat->rows,
-          Mat->colsInBits,
-          Mat->buckets, gpa->len);
+
+  // fixed from g_printf
+  msg_info("cr_pgh_Solve, Mat->rows: %d, Mat->colsInBits: %d, Mat->buckets: %d, gpa->len: %d",
+           Mat->rows, Mat->colsInBits, Mat->buckets, gpa->len);
 
   uint64_t ndiff; //-- time diff in milliseconds
   //-- ForwardReduction ---
@@ -222,7 +223,8 @@ GPtrArray *cr_pgh_Solve(struct cr_BMatrixType *Mat, GPtrArray *gpa, gboolean deb
   //
   if (NULL == gpaAB)
     {
-      g_warning("Failed gpaAB, cr_pgh_ApplyBookkeeping: %s\n", error->message);
+      msg_error("Failed gpaAB, cr_pgh_ApplyBookkeeping: %s",
+                    error->message);
       g_error_free(error); //-- ERROR
     }
   else
@@ -244,7 +246,8 @@ GPtrArray *cr_pgh_Solve(struct cr_BMatrixType *Mat, GPtrArray *gpa, gboolean deb
   //
   if (NULL == gpa_c)
     {
-      g_warning("Failed: gpa_c, cr_pgh_ApplyBookkeeping: %s\n", error->message);
+      msg_error("Failed gpaAB, cr_pgh_ApplyBookkeeping: %s",
+                    error->message);
       g_error_free(error); //-- ERROR
     }
   else
@@ -378,17 +381,17 @@ void cr_pgh_ForwardReduction(struct cr_BMatrixType *Mat, struct cr_BMatrixType *
 //
 // returns Pointer to GPtrArray
 
-GPtrArray *create_GPtrArray_cr_XOR_TYPE(size_t count, GError **error)
+GPtrArray *create_GPtrArray_cr_XOR_TYPE(gsize count, GError **error)
 {
   GPtrArray *gpa = g_ptr_array_new();
   if (NULL == gpa)
     {
-      g_warning("failed: create_GPtrArray_cr_XOR_TYPE, g_ptr_array_new\n");
+      msg_error("failed: create_GPtrArray_cr_XOR_TYPE, g_ptr_array_new");
       return NULL; //-- ERROR
     }
   g_ptr_array_set_size(gpa, count);
   //-- Allocate ONE single, contiguous, and aligned block for ALL elements
-  size_t total_size = count * sizeof(cr_XOR_TYPE);
+  gsize total_size = count * sizeof(cr_XOR_TYPE);
   cr_XOR_TYPE *data_block = (cr_XOR_TYPE *)aligned_alloc(AVX2_ALIGNMENT, total_size);
   if (NULL == data_block)
     {
@@ -456,8 +459,7 @@ GPtrArray *cr_pgh_ApplyBookkeeping(struct cr_BMatrixType *Imat, GPtrArray *gpa, 
   gboolean is_verbose = FALSE;
   if ((NULL == Imat) || (NULL == gpa))
     {
-      g_warning("Failed: cr_pgh_ApplyBookkeeping, NULL pointer in arguemnt list: Imat: %p, gpa: %p\n", (void *)Imat,
-                (void *)gpa);
+      msg_error("Failed: cr_pgh_ApplyBookkeeping, NULL pointer in argument list: Imat: %p, gpa: %p", + (void *)Imat, (void *)gpa);
       return NULL; //-- ERROR
     }
   g_print("cr_pgh_ApplyBookkeeping Imat->rows: %d, Imat->colsInBits: %d, Imat->buckets: %d\n", Imat->rows,
@@ -465,7 +467,7 @@ GPtrArray *cr_pgh_ApplyBookkeeping(struct cr_BMatrixType *Imat, GPtrArray *gpa, 
   g_print("cr_pgh_ApplyBookkeeping, gpa->len: %d\n", gpa->len);
   if ( gpa->len < (guint) Imat->colsInBits )
     {
-      g_warning("Failed: cr_pgh_ApplyBookkeeping gpa->len: %d < Imat->colsInBits: %d\n", gpa->len, Imat->colsInBits);
+      msg_error("Failed: cr_pgh_ApplyBookkeeping gpa->len: %d < Imat->colsInBits: %d", + gpa->len, Imat->colsInBits);
       return NULL; //-- ERROR
     }
 
@@ -474,22 +476,22 @@ GPtrArray *cr_pgh_ApplyBookkeeping(struct cr_BMatrixType *Imat, GPtrArray *gpa, 
   GPtrArray *gpa_out = create_GPtrArray_cr_XOR_TYPE(Imat->rows, &err);
   if (NULL != err)
     {
-      g_warning("Failed: cr_pgh_ApplyBookkeeping %s\n", err->message);
+      msg_error("Failed: cr_pgh_ApplyBookkeeping %s", err->message);
       g_error_free(err);
       return NULL; //-- ERROR
     }
 
   if (gpa_out->len < (guint) Imat->rows)
     {
-      g_warning("Failed: cr_pgh_ApplyBookkeeping gpa_out->len: %d < Imat->rows: %d\n", gpa->len, Imat->rows);
+      msg_error("Failed: cr_pgh_ApplyBookkeeping gpa_out->len: %d < Imat->rows: %d", + gpa->len, Imat->rows);
       return NULL;
     }
 
   //-- Apple Metal-Shading-Language-Specification.pdf: 8 bytes unsigned long == uint64_t
-  //-- const size_t ulongSize = sizeof(unsigned long);
-  //-- const size_t ulongLen = CIPHERTEXT_LEN / ulongSize;
-  const int CHUNK_SIZE = sizeof(uint64_t); //-- 8
-  const int COUNT_OF_CHUNKS = CIPHERTEXT_LEN / CHUNK_SIZE; //-- 1056 / 8 = 132
+  //-- const gsize ulongSize = sizeof(unsigned long);
+  //-- const gsize ulongLen = CIPHERTEXT_LEN / ulongSize;
+  const gsize CHUNK_SIZE = sizeof(uint64_t); //-- 8
+  const gsize COUNT_OF_CHUNKS = CIPHERTEXT_LEN / CHUNK_SIZE; //-- 1056 / 8 = 132
 
   if (TRUE == is_verbose)
     g_print("cr_pgh_ApplyBookkeeping, CHUNK_SIZE: %d, COUNT_OF_CHUNKS: %d, rows: %d, colsInBits: %d\n", CHUNK_SIZE,
@@ -544,8 +546,7 @@ GPtrArray *cr_pgh_BackSubstitution(struct cr_BMatrixType *Mat, GPtrArray *gpa, G
   gboolean is_verbose = FALSE;
   if ((NULL == Mat) || (NULL == gpa))
     {
-      g_warning("failed: cr_pgh_BackSubstitution, NULL pointer in argument list: Mat: %p, gpa: %p\n", (void *)Mat,
-                (void *)gpa);
+      msg_error("failed: cr_pgh_BackSubstitution, NULL pointer in argument list: Mat: %p, gpa: %p", + (void *)Mat, (void *)gpa);
       return NULL; //-- ERROR
     }
   g_print("cr_pgh_BackSubstituion, Mat->rows: %d, Mat->colsInBits %d, Mat->buckets: %d\n", Mat->rows, Mat->colsInBits,
@@ -553,7 +554,7 @@ GPtrArray *cr_pgh_BackSubstitution(struct cr_BMatrixType *Mat, GPtrArray *gpa, G
   g_print("cr_pgh_BackSubstituion, gpa->len: %d\n", gpa->len);
   if ( gpa->len < (guint) Mat->colsInBits )
     {
-      g_warning("failed: cr_pgh_BackSubstituioin gpa->len: %d < Mat->colsInBits: %d\n", gpa->len, Mat->colsInBits);
+      msg_error("failed: cr_pgh_BackSubstituioin gpa->len: %d < Mat->colsInBits: %d", + gpa->len, Mat->colsInBits);
       return NULL; //-- ERROR
     }
 
@@ -562,22 +563,22 @@ GPtrArray *cr_pgh_BackSubstitution(struct cr_BMatrixType *Mat, GPtrArray *gpa, G
   GPtrArray *gpa_out = create_GPtrArray_cr_XOR_TYPE(Mat->rows, &err); //-- ci
   if (NULL != err)
     {
-      g_warning("failed: cr_pgh_BackSubstitution %s\n", err->message);
+      msg_error("failed: cr_pgh_BackSubstitution %s", err->message);
       g_error_free(err);
       return NULL; //-- ERROR
     }
 
   if (gpa_out->len < (guint) Mat->rows )
     {
-      g_warning("failed: cr_pgh_BackSubstituion gpa_out->len: %d < Mat->rows: %d\n", gpa->len, Mat->rows);
+      msg_error("failed: cr_pgh_BackSubstituion gpa_out->len: %d < Mat->rows: %d", + gpa->len, Mat->rows);
       return NULL; //-- ERROR
     }
 
   //-- Apple Metal-Shading-Language-Specification.pdf: 8 bytes unsigned long == uint64_t
-  //-- const size_t ulongSize = sizeof(unsigned long);
-  //-- const size_t ulongLen = CIPHERTEXT_LEN / ulongSize;
-  const int CHUNK_SIZE = sizeof(uint64_t); //-- 8
-  const int COUNT_OF_CHUNKS = CIPHERTEXT_LEN / CHUNK_SIZE; //-- 1056 / 8 = 132
+  //-- const gsize ulongSize = sizeof(unsigned long);
+  //-- const gsize ulongLen = CIPHERTEXT_LEN / ulongSize;
+  const gsize CHUNK_SIZE = sizeof(uint64_t); //-- 8
+  const gsize COUNT_OF_CHUNKS = CIPHERTEXT_LEN / CHUNK_SIZE; //-- 1056 / 8 = 132
   if (TRUE == is_verbose)
     g_print("cr_pgh_BackSubstituion, CHUNK_SIZE: %d, COUNT_OF_CHUNKS: %d, rows: %d, colsInBits: %d\n", CHUNK_SIZE,
             COUNT_OF_CHUNKS, Mat->rows, Mat->colsInBits);

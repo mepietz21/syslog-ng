@@ -77,10 +77,10 @@
 #define AVX2_ALIGNMENT 32 //-- used also for other CPU cfgs
 
 //-- XOR depending on CPU configuration
-void xor_buffers(void *buf_a, const void *buf_b, size_t len);
+void xor_buffers(void *buf_a, const void *buf_b, gsize len);
 
 //-- helper: ctor of std::vector<cr_XOR_TYPE> C replacement
-GPtrArray *create_GPtrArray_cr_XOR_TYPE(size_t count, GError **error);
+GPtrArray *create_GPtrArray_cr_XOR_TYPE(gsize count, GError **error);
 
 //-- helper: destructor of std::vector<cr_XOR_TYPE> C replacement
 void free_GPtrArray_cr_XOR_TYPE(GPtrArray **gpa);

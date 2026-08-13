@@ -45,20 +45,20 @@
 //
 
 // Function to set a bit at a given position
-void cr_B256_setBit(struct cr_B256 *self, int position)
+void cr_B256_setBit(struct cr_B256 *self, guint position)
 {
-  g_assert(position >= 0 && position < 256);
-  const int memberIndex = position >> 6;
-  const int bitIndexInMember = 63 - (position & 63);
+  g_assert(position < 256);
+  const guint memberIndex = position >> 6;
+  const guint bitIndexInMember = 63 - (position & 63);
   self->data.parts[memberIndex] |= (1ULL << bitIndexInMember);
 }
 
 
-gboolean cr_B256_getBit(struct cr_B256 *self, int position)
+gboolean cr_B256_getBit(struct cr_B256 *self, guint position)
 {
-  g_assert(position >= 0 && position < 256);
-  const int memberIndex = position >> 6; //-- Which uint64_t to use (0-3)
-  const int bitIndexInMember = 63 - (position & 63); //-- Which bit in that uint64_t
+  g_assert(position < 256);
+  const guint memberIndex = position >> 6; //-- Which uint64_t to use (0-3)
+  const guint bitIndexInMember = 63 - (position & 63); //-- Which bit in that uint64_t
   return (self->data.parts[memberIndex] >> bitIndexInMember) & 1;
 }
 
@@ -165,16 +165,17 @@ void cr_print_num_dhb(const char *name, const uint64_t value)
 // in col: table col
 // return boolean bit status
 
-gboolean cr_BMatrix_operator_bracket(struct cr_BMatrixType *self, const int row, const int col)
+gboolean cr_BMatrix_operator_bracket(struct cr_BMatrixType *self, const gsize row, const gsize col)
 {
   //         bool operator()(const int row, const int col) const {
   //              return data[row * buckets + (col / B_B_BITS )].getBit(col%B_B_BITS);
   //          }
-  g_assert(col >= 0 && col < self->colsInBits);
+  g_assert(row < self->rows);
+  g_assert(col < self->colsInBits);
   struct cr_B256 *p = &self->data[row * self->buckets + (col >> 8)];
-  const int position = col & 255;
-  const int memberIndex = position >> 6; //-- Which uint64_t to use (0-3)
-  const int bitIndexInMember = 63 - (position & 63); //-- Which bit in that uint64_t
+  const guint position = col & 255;
+  const guint memberIndex = position >> 6; //-- Which uint64_t to use (0-3)
+  const guint bitIndexInMember = 63 - (position & 63); //-- Which bit in that uint64_t
   return (p->data.parts[memberIndex] >> bitIndexInMember) & 1;
 }
 
@@ -188,14 +189,14 @@ gboolean cr_BMatrix_operator_bracket(struct cr_BMatrixType *self, const int row,
 // in col
 // returns -
 
-void cr_BMatrix_setBit(struct cr_BMatrixType *self, const int row, const int col)
+void cr_BMatrix_setBit(struct cr_BMatrixType *self, const gsize row, const gsize col)
 {
   //-- data[row * (buckets) + (col / B_B_BITS)].setBit(col%B_B_BITS);
-  g_assert(col >= 0 && col < self->colsInBits);
+  g_assert(col < self->colsInBits);
   struct cr_B256 *p = &self->data[row * self->buckets + (col >> 8)];
-  const int position = col & 255;
-  const int memberIndex = position >> 6;      // Which uint64_t (0-3)
-  const int bitIndexInMember = 63 - (position & 63); // Bit position (63 is MSB)
+  const guint position = col & 255;
+  const guint memberIndex = position >> 6;      // Which uint64_t (0-3)
+  const guint bitIndexInMember = 63 - (position & 63); // Bit position (63 is MSB)
   p->data.parts[memberIndex] |= 1ULL << bitIndexInMember;
 }
 
@@ -247,9 +248,9 @@ void cr_swapB256(struct cr_B256 *a, struct cr_B256 *b)
 // in k
 // return -
 
-void cr_BMatrix_swapRows(struct cr_BMatrixType *self, int l, int k)
+void cr_BMatrix_swapRows(struct cr_BMatrixType *self, gsize l, gsize k)
 {
-  for (size_t i = 0; i < (size_t)self->buckets; ++i)
+  for (gsize i = 0; i < self->buckets; ++i)
     {
       cr_swapB256(&self->data[l * self->buckets + i], &self->data[k * self->buckets + i]);
     }
@@ -265,9 +266,9 @@ void cr_BMatrix_swapRows(struct cr_BMatrixType *self, int l, int k)
 void cr_BMatrix_Print(struct cr_BMatrixType *self)
 {
   gboolean isbit;
-  for (int row = 0; row < self->rows; ++row)
+  for (gsize row = 0; row < self->rows; ++row)
     {
-      for (int col = 0; col < self->colsInBits; ++col)
+      for (gsize col = 0; col < self->colsInBits; ++col)
         {
           // std::cout << (int)(*this)(row, col) << " ";
           isbit = cr_BMatrix_operator_bracket(self, row, col);
@@ -291,19 +292,20 @@ void cr_BMatrix_Print(struct cr_BMatrixType *self)
 // In C this function has to be called manually to initialize
 // struct cr_BMatrixType. Used in cr_BMatrix_I.
 
-void cr_BMatrix_ctor_static(struct cr_BMatrixType *self, int m, int n)
+void cr_BMatrix_ctor_static(struct cr_BMatrixType *self, gsize m, gsize n)
 {
   self->rows = m;
   self->colsInBits = n;
   double temp_m = ceil(self->colsInBits / (double)(B_B_BITS));
-  int int32ColCount = (int) temp_m;
+  gsize int32ColCount = (gsize) temp_m;
   self->buckets = int32ColCount;
-  size_t n_elements = (size_t)self->rows * self->buckets;
-  size_t total_bytes = n_elements * sizeof(struct cr_B256);
+  gsize n_elements = self->rows * self->buckets;
+  gsize total_bytes = n_elements * sizeof(struct cr_B256);
   self->data = (struct cr_B256 *)aligned_alloc(AVX2_ALIGNMENT, total_bytes); //-- 32 == AVX2_ALIGNMENT
   if (NULL == self->data)
     {
-      g_error("cr_BMatrix_ctor_static: Failed to allocated memory!");
+      // fixed: msg_error
+      msg_error("Failed to allocate BMatrix memory");
       return;
     }
   memset(self->data, 0, total_bytes);
@@ -341,7 +343,7 @@ void cr_BMatrix_destructor_static(struct cr_BMatrixType *self)
 // in size: used as m and n in cr_BMatrix_ctor
 // returns Pointer to heap allocated struct cr_BMatrixType
 
-struct cr_BMatrixType *cr_BMatrix_ctor_dyn(int m, int n)
+struct cr_BMatrixType *cr_BMatrix_ctor_dyn(gsize m, gsize n)
 {
   struct cr_BMatrixType *mat = (struct cr_BMatrixType *) g_malloc0(sizeof(struct cr_BMatrixType));
   cr_BMatrix_ctor_static(mat, m, n);
@@ -381,13 +383,13 @@ void cr_BMatrix_destructor_dyn(struct cr_BMatrixType **self)
 // in size: used as m and n in cr_BMatrix_ctor
 // returns Pointer to heap allocated struct cr_BMatrixType
 
-struct cr_BMatrixType *cr_BMatrix_I(int size)
+struct cr_BMatrixType *cr_BMatrix_I(gsize size)
 {
   //-- BMatrixType* mat = new BMatrixType(size, size);
   struct cr_BMatrixType *mat = (struct cr_BMatrixType *) g_malloc0(sizeof(struct cr_BMatrixType));
   cr_BMatrix_ctor_static(mat, size, size);
 
-  for (int i = 0; i < size; ++i)
+  for (gsize i = 0; i < size; ++i)
     {
       //-- mat->setBit(i, i);
       cr_BMatrix_setBit(mat, i, i);
@@ -410,10 +412,10 @@ struct cr_BMatrixType *cr_BMatrix_I(int size)
 // cr_Matrix_SetCustomDataPointer
 // Links table to data and frees it before assignment if needed
 // in self: Pointer to struct cr_MatrixType containing data pointer
-// in data: Pointer to unsigned int data managed by caller
+// in data: Pointer to guint32 data managed by caller
 // return -
 
-void cr_Matrix_SetCustomDataPointer(struct cr_MatrixType *self, unsigned int *data)
+void cr_Matrix_SetCustomDataPointer(struct cr_MatrixType *self, guint32 *data)
 {
   if (self->freeableData)
     {
@@ -435,11 +437,11 @@ void cr_Matrix_SetCustomDataPointer(struct cr_MatrixType *self, unsigned int *da
 // in col: table col
 // return boolean bit status
 
-gboolean cr_Matrix_operator_bracket(struct cr_MatrixType *self, const size_t row, const size_t col)
+gboolean cr_Matrix_operator_bracket(struct cr_MatrixType *self, const gsize row, const gsize col)
 {
   gboolean ret;
-  size_t i = row * self->buckets + col / B_BITS;
-  size_t offset = B_BITS - 1 - (col % B_BITS);
+  gsize i = row * self->buckets + col / B_BITS;
+  gsize offset = B_BITS - 1 - (col % B_BITS);
   if (0 != ((self->data[i] >> offset) & 1))
     ret = TRUE;
   else
@@ -456,12 +458,12 @@ gboolean cr_Matrix_operator_bracket(struct cr_MatrixType *self, const size_t row
 // in b: Pointer to unsigned int
 // return -
 
-void cr_swap_unsigned_int(unsigned int *a, unsigned int *b)
+void cr_swap_unsigned_int(guint32 *a, guint32 *b)
 {
-  unsigned int temp;
-  memcpy(&temp, a, sizeof(unsigned int));
-  memcpy(a, b, sizeof(unsigned int));
-  memcpy(b, &temp, sizeof(unsigned int));
+  guint32 temp;
+  memcpy(&temp, a, sizeof(guint32));
+  memcpy(a, b, sizeof(guint32));
+  memcpy(b, &temp, sizeof(guint32));
 }
 
 
@@ -474,9 +476,9 @@ void cr_swap_unsigned_int(unsigned int *a, unsigned int *b)
 // in k:
 // return -
 
-void cr_Matrix_swapRows(struct cr_MatrixType *self, size_t l, size_t k)
+void cr_Matrix_swapRows(struct cr_MatrixType *self, gsize l, gsize k)
 {
-  for (size_t i = 0; i < self->buckets; ++i)
+  for (gsize i = 0; i < self->buckets; ++i)
     {
       cr_swap_unsigned_int(&self->data[l * self->buckets + i], &self->data[k * self->buckets + i]);
     }
@@ -493,9 +495,9 @@ void cr_Matrix_swapRows(struct cr_MatrixType *self, size_t l, size_t k)
 void cr_Matrix_Print(struct cr_MatrixType *self)
 {
   gboolean isbit;
-  for (unsigned int i = 0; i < self->rows; ++i)
+  for (gsize i = 0; i < self->rows; ++i)
     {
-      for (unsigned int j = 0; j < self->colsInBits; ++j)
+      for (gsize j = 0; j < self->colsInBits; ++j)
         {
           //-- std::cout << (int)(*this)(i, j);
           isbit = cr_Matrix_operator_bracket(self, i, j);
@@ -529,14 +531,14 @@ void cr_Matrix_Print(struct cr_MatrixType *self)
 // In C this function has to be called manually to initialize
 // struct cr_MatrixType. Used in cr_Matrix_I.
 
-void cr_Matrix_ctor(struct cr_MatrixType *self, int m, int n)
+void cr_Matrix_ctor(struct cr_MatrixType *self, gsize m, gsize n)
 {
   self->rows = m;
   self->colsInBits = n;
   double temp_m = ceil((double)self->colsInBits / (double)(B_BITS));
-  int int32ColCount = (int) temp_m;
+  gsize int32ColCount = (gsize) temp_m;
   self->buckets = int32ColCount;
-  self->data = (unsigned int *) g_malloc0(sizeof(unsigned int) * self->rows * self->buckets);
+  self->data = (guint32 *) g_malloc0(sizeof(guint32) * self->rows * self->buckets);
   self->freeableData = TRUE;
 }
 
@@ -567,15 +569,15 @@ void cr_Matrix_destructor(struct cr_MatrixType *self)
 // in col:
 // return -
 
-void cr_Matrix_toggle(struct cr_MatrixType *self, const size_t row, const size_t col)
+void cr_Matrix_toggle(struct cr_MatrixType *self, const gsize row, const gsize col)
 {
 #if 0
-  size_t i = row * self->buckets + col / B_BITS;
-  size_t offset = B_BITS - 1 - (col % B_BITS);
+  gsize i = row * self->buckets + col / B_BITS;
+  gsize offset = B_BITS - 1 - (col % B_BITS);
   self->data[i] ^= (1u << offset);
 #endif
-  size_t i = row * self->buckets + (col >> B_BITS_SHIFT);  //-- B_BITS_SHIFT == 5
-  size_t offset = B_BITS - 1 - (col & (B_BITS - 1));
+  gsize i = row * self->buckets + (col >> B_BITS_SHIFT);  //-- B_BITS_SHIFT == 5
+  gsize offset = B_BITS - 1 - (col & (B_BITS - 1));
   self->data[i] ^= (1u << offset);
 }
 
@@ -591,19 +593,19 @@ void cr_Matrix_toggle(struct cr_MatrixType *self, const size_t row, const size_t
 // in n: colsInBits (for internal data table)
 // return pointer to instance of type struct cr_MatrixType
 
-struct cr_MatrixType *cr_Matrix_Create(size_t m, size_t n)
+struct cr_MatrixType *cr_Matrix_Create(gsize m, gsize n)
 {
-  size_t rows = m;
-  size_t cols = n;
+  gsize rows = m;
+  gsize cols = n;
   //-- MatrixType *matrix = new MatrixType;
   struct cr_MatrixType *matrix = (struct cr_MatrixType *) g_malloc0(sizeof(struct cr_MatrixType));
   matrix->rows = rows;
   matrix->colsInBits = cols;
   double temp_m = ceil((double)cols / (double)(B_BITS));
-  size_t int32ColCount = (size_t) temp_m;
+  gsize int32ColCount = (gsize) temp_m;
   matrix->buckets = int32ColCount;
-  //-- matrix->data = new unsigned int [rows * int32ColCount]();
-  matrix->data = (unsigned int *) g_malloc0(sizeof(unsigned int) * matrix->rows * matrix->buckets);
+  //-- matrix->data = new guint32 [rows * int32ColCount]();
+  matrix->data = (guint32 *) g_malloc0(sizeof(guint32) * matrix->rows * matrix->buckets);
   matrix->freeableData = TRUE;
   return matrix;
 }
@@ -617,10 +619,10 @@ struct cr_MatrixType *cr_Matrix_Create(size_t m, size_t n)
 // in size: used for row and col of internal data
 // return pointer to instance of type struct cr_MatrixType
 
-struct cr_MatrixType *cr_Matrix_I(size_t size)
+struct cr_MatrixType *cr_Matrix_I(gsize size)
 {
   struct cr_MatrixType *I = cr_Matrix_Create(size, size);
-  for (size_t i = 0; i < size; ++i)
+  for (gsize i = 0; i < size; ++i)
     {
       //-- (*I).toggle(i, i);
       cr_Matrix_toggle(I, i, i);
@@ -639,14 +641,14 @@ struct cr_MatrixType *cr_Matrix_I(size_t size)
 
 void cr_Matrix_FillWithRandomness(struct cr_MatrixType *m, int k) //-- int k = 5
 {
-  for (unsigned int c = 0; c < m->colsInBits; c++)
+  for (gsize c = 0; c < m->colsInBits; c++)
     {
-      size_t *randoms = cr_distinctRandomEz(((unsigned int)m->rows - 1), k, c);
+      gsize *randoms = cr_distinctRandomEz((gsize)(m->rows - 1), k, (gint)c);
       // Iterate through the column c
       for (int i = 0; i < k; ++i)
         {
-          size_t row = randoms[i];
-          // unsigned int bitmask = (1 << (B_BITS - (c % B_BITS + 1)));
+          gsize row = randoms[i];
+          // guint32 bitmask = (1 << (B_BITS - (c % B_BITS + 1)));
           // set this to a 1
           //-- m->togle(row, c);// data[row * (m->buckets) + (c / B_BITS)] ^= bitmask;
           cr_Matrix_toggle(m, row, c);

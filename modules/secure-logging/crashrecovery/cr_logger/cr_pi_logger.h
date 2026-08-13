@@ -98,17 +98,17 @@ gboolean cr_Init_prg(cr_PIContext *ctx, cr_PRGContext **prg);
  *
  * returns: FALSE on failure and TRUE on sucess.
  */
-gboolean cr_AddLogEntry(cr_PIContext *ctx, unsigned char *logMessage, int logMessageSize);
+gboolean cr_AddLogEntry(cr_PIContext *ctx, const unsigned char *logMessage, size_t logMessageSize);
 
 // TODO prosa
 
 gboolean cr_read_key(const char *path, unsigned char key[KEY_SIZE]);
 gboolean cr_write_key(const char *path, unsigned char key[KEY_SIZE]);
-gboolean cr_createNewLogFile(FILE *file, unsigned long fileSize);
+gboolean cr_createNewLogFile(FILE *file, size_t fileSize);
 gboolean cr_initializeLogFileWithPseudoRandomPad(cr_PRGContext *p_prg, FILE *file, size_t m);
 gboolean cr_writePRGToFile(cr_PRGContext *p_prg, FILE *file, unsigned char *buffer, size_t bufferSize);
 gboolean cr_updateKey(cr_PIContext *ctx);
-int cr_encryptLog(unsigned char *key, unsigned char *logMessage, int logMessageSize, unsigned char *cipherLogMessage);
+int cr_encryptLog(const unsigned char *key, const unsigned char *logMessage, size_t logMessageSize, unsigned char *cipherLogMessage);
 gboolean init_cr_logger_functionality(cr_pi_logger_context *p_loggerctx, cr_PIContext **pp_pictx,
                                       cr_PRGContext **pp_prg);
 

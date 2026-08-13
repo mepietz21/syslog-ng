@@ -39,7 +39,7 @@
 
 
 // The folling must be replaced due to GitHub code checker
-// static unsigned char GAMMA_DASH[AES_BLOCK_LEN] = {[0 ... (AES_BLOCK_LEN - 1)] = PAD2};
+// static guchar GAMMA_DASH[AES_BLOCK_LEN] = {[0 ... (AES_BLOCK_LEN - 1)] = PAD2};
 // cr_pi_shared.h:54: #define AES_BLOCK_LEN 16
 
 SLOGCR_STATIC_ASSERT(AES_BLOCK_LEN == 16, "Wrong_AES_Block_Size_for_provided_GAMMA_DASH_initialization");
@@ -47,33 +47,35 @@ SLOGCR_STATIC_ASSERT(AES_BLOCK_LEN == 16, "Wrong_AES_Block_Size_for_provided_GAM
 #define FILLGD_16(val) val, val, val, val, val, val, val, val, \
                       val, val, val, val, val, val, val, val
 
-static unsigned char GAMMA_DASH[AES_BLOCK_LEN] = { FILLGD_16(PAD2) };
+static guchar GAMMA_DASH[AES_BLOCK_LEN] = { FILLGD_16(PAD2) };
 
 
 //-- from PIShared.c -----
 
-int cr_CreateID(unsigned char *key, int j, unsigned char IDlj[ID_LEN])
+int cr_CreateID(guchar *key, gint j, guchar IDlj[ID_LEN])
 {
-  int inputSize = ID_LEN + sizeof(int);
-  unsigned char inputBuffer[inputSize];
+  gint inputSize = ID_LEN + sizeof(int);
+  guchar inputBuffer[inputSize];
 
   memcpy(inputBuffer, GAMMA_DASH, AES_BLOCK_LEN);
   memcpy(inputBuffer + AES_BLOCK_LEN, &j, sizeof(int));
 
-  if (0 == cr_PRF(inputBuffer, inputSize, key, IDlj, ID_LEN))
+  if (cr_PRF(inputBuffer, inputSize, key, IDlj, ID_LEN) == 0)
     {
-      perror("ERROR: Failed to create the ID for the key + j.\n");
+      // fixed: msg_error
+      msg_error("Failed to create ID");
       return 0;
     }
 
   return 1;
 }
 
-int cr_CreateIntegrityTag(unsigned char *key, unsigned char *XORlj, unsigned char Tlj[INTEGRITY_TAG_LEN])
+int cr_CreateIntegrityTag(guchar *key, guchar *XORlj, guchar Tlj[INTEGRITY_TAG_LEN])
 {
   if (0 == cr_PRF(XORlj, CIPHERTEXT_LEN, key, Tlj, INTEGRITY_TAG_LEN))
     {
-      perror("ERROR: Failed to create the integrity tag.\n");
+      // fixed: msg_error
+      msg_error("Failed to create the integrity tag.");
       return 0;
     }
   return 1;
@@ -105,7 +107,7 @@ void cr_print_gstring_info(GString *gstr, const gchar *sz_title, gboolean is_sho
   if (TRUE == is_showhex && gstr->len > 0)
     {
       // TODO autotools makefiles
-      //dbg_hexdump(sz_title, (unsigned char *) gstr->str, gstr->len);
+      //dbg_hexdump(sz_title, (guchar *) gstr->str, gstr->len);
       ;
     }
 }
@@ -117,7 +119,8 @@ gboolean get_path_from_file(const char *path_file_name, char *path_dir, size_t s
   gboolean retval = FALSE;
   if ((NULL == path_file_name) || (NULL == path_dir))
     {
-      g_warning("Invalid input, get_path_from_file");
+      // fixed: msg_warning
+      msg_warning("Invalid input, get_path_from_file");
       return FALSE; //-- ERROR, never ever
     }
   memset(path_dir, 0, size_path_dir);
@@ -132,7 +135,10 @@ gboolean get_path_from_file(const char *path_file_name, char *path_dir, size_t s
           if (dir_len >= size_path_dir)
             {
               g_free(dirname);
-              g_warning("size_path_dir too small (%zu)! Need %zu", size_path_dir, dir_len + 1);
+              // fixed: msg_warning
+              msg_warning("size_path_dir too small",
+                          evt_tag_printf("size_path_dir", "%zu", size_path_dir),
+                          evt_tag_printf("required_size", "%zu", dir_len + 1));
               return FALSE;
             }
 
@@ -189,7 +195,8 @@ gboolean get_now(char *szNow, gsize str_size)
   local_time_info = localtime(&raw_time);
   if (strftime(szNow, str_size, "%Y-%m-%d_%H%M%S", local_time_info) == 0)
     {
-      g_warning("\nFailed to format the time string.\n");
+      // fixed: msg_warning
+      msg_warning("Failed to format the time string.");
       return FALSE; //-- ERROR
     }
   return TRUE; //-- SUCCESS
@@ -220,13 +227,17 @@ gboolean get_timestamp_diff(const char *szStart, const char *szEnd, char *szDiff
   // On success, this should be the null terminator at the end of the string.
   if (strptime(szStart, time_format, &time_info1) == NULL)
     {
-      g_warning("Could not parse the first timestamp: %s\n", szStart);
+      // fixed: msg_warning
+      msg_warning("Could not parse the first timestamp",
+                evt_tag_str("timestamp", szStart));
       return FALSE; //-- ERROR
     }
 
   if (strptime(szEnd, time_format, &time_info2) == NULL)
     {
-      g_warning("Could not parse the second timestamp: %s\n", szEnd);
+      // fixed: msg_warning
+      msg_warning("Could not parse the second timestamp",
+                evt_tag_str("timestamp", szEnd));
       return FALSE; //-- ERROR
     }
 
@@ -236,7 +247,8 @@ gboolean get_timestamp_diff(const char *szStart, const char *szEnd, char *szDiff
   time_t t2 = mktime(&time_info2);
   if (t1 == -1 || t2 == -1)
     {
-      g_warning("mktime failed to convert one of the times.\n");
+      // fixed: msg_warning
+      msg_warning("Failed to convert timestamp to calendar time");
       return FALSE; //-- ERROR
     }
 

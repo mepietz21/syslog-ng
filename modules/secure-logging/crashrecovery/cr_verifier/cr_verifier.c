@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
 
   if (1 > argc)
     {
-      g_printerr("ERROR: cr_verifier: Wrong count of arguments!\n");
+      msg_error("cr_verifier: Wrong count of arguments!");
       return 1; //-- ERROR
     }
 
@@ -96,14 +96,14 @@ int main(int argc, char *argv[])
 
   if (FALSE == cr_check_cpu_cfg())
     {
-      g_printerr("\nERROR: CPU cfg. Check build system and CPU_AVX2, CPU_SSE2 or CPU_OTHER. See cr_plain_gauss_helper.h\n");
+      msg_error("CPU cfg. Check build system and CPU_AVX2, CPU_SSE2 or CPU_OTHER. See cr_plain_gauss_helper.h");
       return 1; //-- ERROR
     }
 
   //-- ensure memory alignemnt (not only when AVX2 CPU cfg is used)
   if ( (sizeof(cr_XOR_TYPE) % AVX2_ALIGNMENT) != 0)
     {
-      g_printerr("ERROR: Wrong sizeof of cr_XOR_TYPE. Memory needs to be aligned.");
+      msg_error("Wrong sizeof of cr_XOR_TYPE. Memory needs to be aligned.");
       return 1; //-- ERROR
     }
 
@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
   if (!g_option_context_parse(context, &argc, &argv, &error))
     {
       // If parsing failed, print the error and exit.
-      g_printerr("ERROR: Parsing options: %s\n", error->message);
+      msg_error("Parsing options: %s", error->message);
       g_error_free(error);
       g_option_context_free(context);
       return 1; //-- ERROR
@@ -125,7 +125,7 @@ int main(int argc, char *argv[])
   if ((5 != argc) && (FALSE == is_arg_key) && (FALSE == is_arg_logs) && (FALSE == is_arg_out)
       && (FALSE == is_arg_maxlogs))
     {
-      g_printerr("ERROR: Expecting argc equal 4\n");
+      msg_error("Expecting argc equal 4");
       g_option_context_free(context);
       return 1; //-- ERROR
     }
@@ -135,47 +135,58 @@ int main(int argc, char *argv[])
   memset(&ctx, 0, sizeof(cr_VerifierContext));
 
   //-- check master key, --key, -k
-  strncpy(ctx.masterKeyPath, argv[1], PATH_MAX - 1);
+  g_strlcpy(ctx.masterKeyPath, argv[1], PATH_MAX - 1);
   ctx.masterKeyPath[PATH_MAX - 1] = '\0';
   if ( ! g_file_test(ctx.masterKeyPath, G_FILE_TEST_IS_REGULAR))
     {
-      g_printerr("ERROR: Invalid full file name of master key: %s\n", ctx.masterKeyPath);
+      msg_error("Invalid full file name of master key: %s", ctx.masterKeyPath);
       g_option_context_free(context);
       return 1; //-- ERROR
     }
 
   //-- now ONE input file, --in, -i
   //-- check if path of encrypted input log file is valid
-  strncpy(ctx.inEncFilePath, argv[2], PATH_MAX - 1);
+  g_strlcpy(ctx.inEncFilePath, argv[2], PATH_MAX - 1);
   ctx.inEncFilePath[PATH_MAX - 1] = '\0';
   if ( ! g_file_test(ctx.inEncFilePath, G_FILE_TEST_IS_REGULAR))
     {
-      g_printerr("ERROR: Invalid full file name of encrypted input log file: %s\n", ctx.inEncFilePath);
+      msg_error("Invalid full file name of encrypted input log file: %s", ctx.inEncFilePath);
       g_option_context_free(context);
       return 1; //-- ERROR
     }
 
   //-- output file (decrypted log file), --out, -o
   //-- check if directory of given output file exists
-  strncpy(ctx.outPlainFilePath, argv[3], PATH_MAX - 1);
+  g_strlcpy(ctx.outPlainFilePath, argv[3], PATH_MAX - 1);
   ctx.outPlainFilePath[PATH_MAX - 1] = '\0';
   gchar *dirname = g_path_get_dirname(ctx.outPlainFilePath);
   if (NULL != dirname)
     {
       if ( ! g_file_test(dirname, G_FILE_TEST_IS_DIR))
         {
-          g_printerr("ERROR: Invalid out directory: %s of file %s\n", dirname, ctx.outPlainFilePath);
+          msg_error("Invalid out directory: %s of file %s", dirname, ctx.outPlainFilePath);
           g_option_context_free(context);
           g_free(dirname);
           return 1; //-- ERROR
         }
       // derive directory from output file - needed?
-      strncpy(ctx.logFileDirectory, dirname, PATH_MAX - 1);
+      g_strlcpy(ctx.logFileDirectory, dirname, PATH_MAX - 1);
+
+      size_t len = strlen (ctx.logFileDirectory);
+      if (len > 0 && ctx.logFileDirectory[len - 1] != '/')
+        {
+          g_strlcat(ctx.logFileDirectory, "/", PATH_MAX); //-- unify
+        } 
+      
+      // fixed: would lead to paths like /path/to/dir//
+      /* 
       char last = ctx.logFileDirectory[strlen(ctx.logFileDirectory)];
       if ( '/' != last )
         {
           strncat(ctx.logFileDirectory, "/", PATH_MAX - 1); //-- unify
         }
+      */
+
     }
   g_free (dirname);
 
@@ -189,13 +200,13 @@ int main(int argc, char *argv[])
   maxlogs = strtol(argv[4], &endptr, 10);
   if (*endptr != '\0')
     {
-      g_printerr("ERROR: Invalid maxlogs, expected a number: %s\n", argv[4]);
+      msg_error("Invalid maxlogs, expected a number: %s", argv[4]);
       g_option_context_free(context);
       return 1; //-- ERROR
     }
   if (maxlogs <= 0)
     {
-      g_printerr("ERROR: Out of range: maxlogs: %d\n", maxlogs);
+      msg_error("Out of range: maxlogs: %d", maxlogs);
       g_option_context_free(context);
       return 1; //-- ERROR
     }
@@ -205,25 +216,25 @@ int main(int argc, char *argv[])
   double temp_m = ceil(ctx.n * THE_C);
   ctx.m = (int) temp_m;
 
-  g_print("key: %s\n", argv[1]);
-  g_print("in: %s\n", argv[2]);
-  g_print("out: %s\n", argv[3]);
-  g_print("maxlogs: %s\n", argv[4]);
+  msg_info("key: %s", argv[1]);
+  msg_info("in: %s", argv[2]);
+  msg_info("out: %s", argv[3]);
+  msg_info("maxlogs: %s", argv[4]);
 
   g_option_context_free(context);
 
-  g_print("ctx.masterKeyPath: %s\n", ctx.masterKeyPath);
-  g_print("ctx.logFileDirectory: %s\n", ctx.logFileDirectory);
-  g_print("ctx.inEncFilePath: %s\n", ctx.inEncFilePath);
-  g_print("ctx.outPlainFilePath: %s\n", ctx.outPlainFilePath);
-  g_print("ctx.outProtocolPath: %s\n", ctx.outProtocolPath);
-  g_print("ctx.n: %d\n", ctx.n);
-  g_print("ctx.m: %d\n", ctx.m);
+  msg_info("ctx.masterKeyPath: %s", ctx.masterKeyPath);
+  msg_info("ctx.logFileDirectory: %s", ctx.logFileDirectory);
+  msg_info("ctx.inEncFilePath: %s", ctx.inEncFilePath);
+  msg_info("ctx.outPlainFilePath: %s", ctx.outPlainFilePath);
+  msg_info("ctx.outProtocolPath: %s", ctx.outProtocolPath);
+  msg_info("ctx.n: %d", ctx.n);
+  msg_info("ctx.m: %d", ctx.m);
 
   char szBuffer[256];
   memset(szBuffer, 0, sizeof(szBuffer));
   get_human_timestamp(szBuffer);
-  g_print("%s\n", szBuffer);
+  msg_info("%s", szBuffer);
 
   struct timespec start, end;
   start = get_ts_now();
@@ -232,7 +243,7 @@ int main(int argc, char *argv[])
   ctx.protocolFile = fopen(ctx.outProtocolPath, "w");
   if (NULL == ctx.protocolFile)
     {
-      g_warning("Can not create protocol output file!\n");
+      msg_warning("Can not create protocol output file!");
       return 1; //-- ERROR
     }
   get_human_timestamp(szBuffer);
@@ -269,10 +280,10 @@ int main(int argc, char *argv[])
       (void) fprintf(ctx.protocolFile, "Verify returns successful!\n");
     }
   cr_print_cpu_cfg();
-  g_print("\n");
+  msg_info("");
   memset(szBuffer, 0, sizeof(szBuffer));
   get_human_timestamp(szBuffer);
-  g_print("%s\n", szBuffer);
+  msg_info("%s", szBuffer);
 
   //-- clean up ---
   if (NULL != ctx.protocolFile)

@@ -57,6 +57,6 @@ void cr_fill_struct_keys(cr_Keys *ks,
 gboolean id_type_buffer_equal(gconstpointer a, gconstpointer b);
 void destroy_value_drnbuffer(gpointer value);
 void print_drns_value_pair(gpointer keyVoid, gpointer valueVoid, gpointer user_data);
-gboolean is_equal_nullvector(unsigned char *buf, size_t len, gboolean debug);
+gboolean is_equal_nullvector(unsigned char *buf, gsize len, gboolean debug);
 
 #endif /* cr_pi_verifier_h */

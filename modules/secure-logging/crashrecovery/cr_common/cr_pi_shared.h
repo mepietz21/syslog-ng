@@ -111,7 +111,7 @@
  * ------------------
  * ID_{l_j} = PRF_{K_i} (\gamma ' || j)
  */
-int cr_CreateID(unsigned char *key, int j, unsigned char IDlj[ID_LEN]);
+int cr_CreateID(guchar *key, gint j, guchar IDlj[ID_LEN]);
 
 
 /*
@@ -119,7 +119,7 @@ int cr_CreateID(unsigned char *key, int j, unsigned char IDlj[ID_LEN]);
  * ----------------------------
  * T_{l_j} = PRF_{K_i} (XOR_{l_j})
  */
-int cr_CreateIntegrityTag(unsigned char *key, unsigned char *XORlj, unsigned char Tlj[INTEGRITY_TAG_LEN]);
+int cr_CreateIntegrityTag(guchar *key, guchar *XORlj, guchar Tlj[INTEGRITY_TAG_LEN]);
 
 /* utility for logger and verifier to show GString str */
 void cr_print_gstring_info(GString *gstr, const gchar *sz_title, gboolean is_showhex, gboolean is_debug);

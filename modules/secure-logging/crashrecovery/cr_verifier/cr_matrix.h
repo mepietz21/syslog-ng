@@ -46,7 +46,7 @@
 
 
 #define BITS_PER_BYTE 8
-#define BYTES 4 // 4 for unsigned int
+#define BYTES 4 // 4 for guint32
 #define B_BITS (BITS_PER_BYTE * BYTES)
 #define B_B_BITS 256
 #define B_B_BIT_SHIFT 8 //-- log2(256) is 8, so N / 256 == N >> 8
@@ -71,10 +71,10 @@ struct cr_B256
 // unsigned long -> uint64_t, 8 Bytes
 
 // Function to set a bit at a given position
-void cr_B256_setBit(struct cr_B256 *self, int position);
+void cr_B256_setBit(struct cr_B256 *self, guint position);
 
 // Function to get a bit at a given position
-gboolean cr_B256_getBit(struct cr_B256 *self, int position);
+gboolean cr_B256_getBit(struct cr_B256 *self, guint position);
 
 // data = self XOR other
 //struct cr_B256 cr_B256_operatorXOR(struct cr_B256 *self, const struct cr_B256 *other);
@@ -92,23 +92,23 @@ void cr_print_num_dhb(const char *name, const uint64_t value);
 struct cr_BMatrixType
 {
   struct cr_B256 *data;
-  int rows;
-  int buckets;
-  int colsInBits;
+  gsize rows;
+  gsize buckets;
+  gsize colsInBits;
   gboolean freeableData; //-- private c++ member
 };
 
-gboolean cr_BMatrix_operator_bracket(struct cr_BMatrixType *self, const int row, const int col);
+gboolean cr_BMatrix_operator_bracket(struct cr_BMatrixType *self, const gsize row, const gsize col);
 void cr_BMatrix_SetCustomDataPointer(struct cr_BMatrixType *self, struct cr_B256 *data);
 void cr_swapB256(struct cr_B256 *a, struct cr_B256 *b); //-- std::swap replacemnt in C
-void cr_BMatrix_swapRows(struct cr_BMatrixType *self, int l, int k);
+void cr_BMatrix_swapRows(struct cr_BMatrixType *self, gsize l, gsize k);
 void cr_BMatrix_Print(struct cr_BMatrixType *self);
-void cr_BMatrix_ctor_static(struct cr_BMatrixType *self, int m, int n);
-struct cr_BMatrixType *cr_BMatrix_ctor_dyn(int m, int n);
+void cr_BMatrix_ctor_static(struct cr_BMatrixType *self, gsize m, gsize n);
+struct cr_BMatrixType *cr_BMatrix_ctor_dyn(gsize m, gsize n);
 void cr_BMatrix_destructor_static(struct cr_BMatrixType *self);
 void cr_BMatrix_destructor_dyn(struct cr_BMatrixType **self);
-struct cr_BMatrixType *cr_BMatrix_I(int size);
-void cr_BMatrix_setBit(struct cr_BMatrixType *self, const int row, const int col);
+struct cr_BMatrixType *cr_BMatrix_I(gsize size);
+void cr_BMatrix_setBit(struct cr_BMatrixType *self, const gsize row, const gsize col);
 
 
 
@@ -116,29 +116,29 @@ void cr_BMatrix_setBit(struct cr_BMatrixType *self, const int row, const int col
 
 struct cr_MatrixType
 {
-  unsigned int *data;
-  size_t rows;
-  size_t buckets;
-  size_t colsInBits;
+  guint32 *data;
+  gsize rows;
+  gsize buckets;
+  gsize colsInBits;
   gboolean freeableData;
 };
 
 // Metal-Shading-Language-Specification.pdf, Table 2.2. Size and alignment of scalar data type
-// unsigned int -> uint32_t, 4 Bytes
+// unsigned int -> guint32, 4 Bytes
 
 
-void cr_Matrix_SetCustomDataPointer(struct cr_MatrixType *self, unsigned int *data);
-gboolean cr_Matrix_operator_bracket(struct cr_MatrixType *self, const size_t row, const size_t col);
-void cr_Matrix_swapRows(struct cr_MatrixType *self, size_t l, size_t k);
+void cr_Matrix_SetCustomDataPointer(struct cr_MatrixType *self, guint32 *data);
+gboolean cr_Matrix_operator_bracket(struct cr_MatrixType *self, const gsize row, const gsize col);
+void cr_Matrix_swapRows(struct cr_MatrixType *self, gsize l, gsize k);
 void cr_Matrix_Print(struct cr_MatrixType *self);
-void cr_Matrix_ctor(struct cr_MatrixType *self, int m, int n);
+void cr_Matrix_ctor(struct cr_MatrixType *self, gsize m, gsize n);
 void cr_Matrix_destructor(struct cr_MatrixType *self);
-void cr_Matrix_toggle(struct cr_MatrixType *self, const size_t row, const size_t col);
-void cr_swap_unsigned_int(unsigned int *a, unsigned int *b);
+void cr_Matrix_toggle(struct cr_MatrixType *self, const gsize row, const gsize col);
+void cr_swap_unsigned_int(guint32 *a, guint32 *b);
 
 //-- non-member functions of MatrixType (outside c++ class / struct)
-struct cr_MatrixType *cr_Matrix_Create(size_t m, size_t n);
-struct cr_MatrixType *cr_Matrix_I(size_t size);
+struct cr_MatrixType *cr_Matrix_Create(gsize m, gsize n);
+struct cr_MatrixType *cr_Matrix_I(gsize size);
 void cr_Matrix_FillWithRandomness(struct cr_MatrixType *m, int k); //-- int k = 5
 
 #endif /* cr_matrix_h */

@@ -35,9 +35,9 @@
 //in: arr Array Container of items being searched in
 //in: size Number of items in array
 
-static gboolean cr_exists(size_t element, const size_t arr[], int size)
+static gboolean cr_exists(gsize element, const gsize arr[], gint size)
 {
-  for (int i = 0; i < size; ++i)
+  for (gint i = 0; i < size; ++i)
     {
       if (arr[i] == element)
         {
@@ -61,45 +61,79 @@ static gboolean cr_exists(size_t element, const size_t arr[], int size)
 //       in array, k <= (range + 1)
 // in seed: Initialization seed of random generator.
 //
-// return Pointer to array of k numbers of type size_t or NULL in
+// return Pointer to array of k numbers of type gsize or NULL in
 //        case of ERROR
 
-size_t *cr_distinctRandomEz(size_t range, int k, int seed)
+gsize *cr_distinctRandomEz(gsize range, gint k, gint seed)
 {
   (void) seed;
-  if ((size_t)RAND_MAX <= range)
+  if ((gsize)RAND_MAX <= range)
     {
-      g_print("ERROR, range %lu is out of range. Must be less than RAND_MAX %d\n", range, RAND_MAX);
+      msg_warning("Random range is out of bounds", 
+                  evt_tag_printf("range", "%zu", range), 
+                  evt_tag_printf("max_range", "%d", RAND_MAX));
       return NULL;
     }
 
-  if ((k < 0) || ((size_t)k > (range + 1U)))
+  if ((k < 0) || ((gsize)k > (range + 1U)))
     {
-      g_print("ERROR, Invalid k: %d or range: %lu\n", k, range);
+      msg_warning("Invalid random selection parameters", 
+                  evt_tag_printf("k", "%d", k), 
+                  evt_tag_printf("range", "%zu", range));
       return NULL;
     }
 
-  //-- size_t *k_random = new size_t[k];
-  size_t *k_random = (size_t *) g_malloc0( ((size_t)k) * sizeof(size_t) );
+  //-- gsize *k_random = new gsize[k];
+  gsize *k_random = (gsize *) g_malloc0(((gsize)k) * sizeof(gsize));
   if (k_random == NULL)
     {
-      g_print("ERROR, Failed to allocated memory for k_random");
+      msg_error("Failed to allocate memory for k_random", 
+                evt_tag_printf("count", "%d", k), 
+                evt_tag_printf("element_size", "%zu", sizeof(gsize)));
       return NULL;
     }
-  memset(k_random, -1, ((size_t)k) * sizeof(size_t));
+  memset(k_random, -1, ((gsize)k) * sizeof(gsize));
 
-  int i = 0;
+  gint i = 0;
+
+  // new: fixed Modulo Bias
+  const gsize upperBound = range + 1U;
+  const gsize limit = G_MAXSIZE - (G_MAXSIZE % upperBound);
+
   while (i < k)
     {
-      //-- size_t r = distribution(gen);
-      size_t r;
+      //-- gsize r = distribution(gen);
+      gsize r;
+
+      do {
+
       if (RAND_bytes((unsigned char *)&r, sizeof(r)) != 1)
+
+      {
+          msg_error("RAND_bytes failed",
+                    evt_tag_printf("random_size", "%zu", sizeof(r)));
+          g_free(k_random);
+          return NULL;
+        }
+
+      if (r >= limit)
         {
-          free(k_random);
-          g_print("ERROR, OpenSSL RAND_bytes returns with error");
+          continue;
+        }
+
+      r = r % upperBound;
+
+      /*
+        {
+          g_free(k_random);
+          msg_error("RAND_bytes failed", 
+                    evt_tag_printf("random_size", "%zu", sizeof(r)));
           return NULL;
         }
       r = r % (range + 1U);
+
+      */
+
       if (cr_exists(r, k_random, k))
         {
           continue;
@@ -107,6 +141,7 @@ size_t *cr_distinctRandomEz(size_t range, int k, int seed)
       k_random[i] = r;
       i++;
     }
+  }
   return k_random;
 }
 

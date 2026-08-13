@@ -7,9 +7,11 @@ noinst_LTLIBRARIES += modules/secure-logging/crashrecovery/cr_common/libcr_commo
 # -- Sources ---
 modules_secure_logging_crashrecovery_cr_common_libcr_common_la_SOURCES = \
 	modules/secure-logging/crashrecovery/cr_common/cr_crypto.c \
+	modules/secure-logging/crashrecovery/cr_common/cr_crypto_new.c \
 	modules/secure-logging/crashrecovery/cr_common/cr_pi_shared.c \
 	modules/secure-logging/crashrecovery/cr_common/cr_randomstuff.c \
 	modules/secure-logging/crashrecovery/cr_common/cr_crypto.h \
+	modules/secure-logging/crashrecovery/cr_common/cr_crypto_new.h \
 	modules/secure-logging/crashrecovery/cr_common/cr_pi_shared.h \
 	modules/secure-logging/crashrecovery/cr_common/cr_randomstuff.h
 
