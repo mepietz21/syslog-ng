@@ -28,6 +28,7 @@
 #include <openssl/rand.h>
 
 #include "cr_randomstuff.h"
+#include "messages.h"
 
 //----------------------------------------------------------------------
 //exists
@@ -69,79 +70,65 @@ gsize *cr_distinctRandomEz(gsize range, gint k, gint seed)
   (void) seed;
   if ((gsize)RAND_MAX <= range)
     {
-      msg_warning("Random range is out of bounds", 
-                  evt_tag_printf("range", "%zu", range), 
+      msg_warning("Random range is out of bounds",
+                  evt_tag_printf("range", "%zu", range),
                   evt_tag_printf("max_range", "%d", RAND_MAX));
       return NULL;
     }
 
   if ((k < 0) || ((gsize)k > (range + 1U)))
     {
-      msg_warning("Invalid random selection parameters", 
-                  evt_tag_printf("k", "%d", k), 
+      msg_warning("Invalid random selection parameters",
+                  evt_tag_printf("k", "%d", k),
                   evt_tag_printf("range", "%zu", range));
       return NULL;
     }
 
-  //-- gsize *k_random = new gsize[k];
+  /* allocate array for k numbers */
   gsize *k_random = (gsize *) g_malloc0(((gsize)k) * sizeof(gsize));
   if (k_random == NULL)
     {
-      msg_error("Failed to allocate memory for k_random", 
-                evt_tag_printf("count", "%d", k), 
+      msg_error("Failed to allocate memory for k_random",
+                evt_tag_printf("count", "%d", k),
                 evt_tag_printf("element_size", "%zu", sizeof(gsize)));
       return NULL;
     }
+  /* mark entries as invalid */
   memset(k_random, -1, ((gsize)k) * sizeof(gsize));
 
   gint i = 0;
 
-  // new: fixed Modulo Bias
+  /* Avoid modulo bias: draw random values in [0, limit-1] where limit is
+   * a multiple of upperBound, then reduce modulo upperBound. */
   const gsize upperBound = range + 1U;
   const gsize limit = G_MAXSIZE - (G_MAXSIZE % upperBound);
 
   while (i < k)
     {
-      //-- gsize r = distribution(gen);
       gsize r;
 
-      do {
-
-      if (RAND_bytes((unsigned char *)&r, sizeof(r)) != 1)
-
-      {
-          msg_error("RAND_bytes failed",
-                    evt_tag_printf("random_size", "%zu", sizeof(r)));
-          g_free(k_random);
-          return NULL;
-        }
-
-      if (r >= limit)
+      do
         {
-          continue;
+          if (RAND_bytes((unsigned char *)&r, sizeof(r)) != 1)
+            {
+              msg_error("RAND_bytes failed",
+                        evt_tag_printf("random_size", "%zu", sizeof(r)));
+              g_free(k_random);
+              return NULL;
+            }
         }
+      while (r >= limit);
 
       r = r % upperBound;
-
-      /*
-        {
-          g_free(k_random);
-          msg_error("RAND_bytes failed", 
-                    evt_tag_printf("random_size", "%zu", sizeof(r)));
-          return NULL;
-        }
-      r = r % (range + 1U);
-
-      */
 
       if (cr_exists(r, k_random, k))
         {
           continue;
         }
+
       k_random[i] = r;
       i++;
     }
-  }
+
   return k_random;
 }
-

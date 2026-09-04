@@ -36,6 +36,7 @@
 #include "utils_slog.h"
 #include "cr_pi_shared.h"
 #include "cr_crypto.h"
+#include "messages.h"
 
 
 // The folling must be replaced due to GitHub code checker

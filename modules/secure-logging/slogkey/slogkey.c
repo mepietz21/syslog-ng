@@ -177,6 +177,24 @@ int main(int argc, char **argv)
       gchar *serial = argv[optidx++];
       gchar *hostKeyFileName = argv[optidx];
 
+      //fixed: TODO-1: Check for identicalö master and host key paths
+      gchar *real_master = g_canonicalize_filename(masterKeyFileName, NULL);
+      gchar *real_host = g_canonicalize_filename(hostKeyFileName, NULL);
+
+      if (real_master && real_host && g_strcmp0(real_master, real_host) == 0)
+        {
+          msg_error(SLOG_ERROR_PREFIX,
+                    evt_tag_str("Reason", "Master key and host key file paths are identical!"),
+                    evt_tag_str("file", masterKeyFileName));
+          g_free(real_master);
+          g_free(real_host);
+          ret = -1; //-- ERROR
+          return ret;
+        }
+
+      g_free(real_master);
+      g_free(real_host);
+
       guchar masterKey[KEY_LENGTH] = { 0 };
 
       guint64 counterValue;

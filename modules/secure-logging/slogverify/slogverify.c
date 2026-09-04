@@ -604,6 +604,21 @@ int main(int argc, char *argv[])
   }
   msg_info(SLOG_INFO_PREFIX, evt_tag_str("OUTPUTLOG", gstr_path_outputlog->str));
 
+  // TODO-1: Check for identical input and output log paths
+
+  if ((gstr_path_inputlog->len > 0U) && (gstr_path_outputlog->len > 0U) &&
+      (g_strcmp0(gstr_path_inputlog->str, gstr_path_outputlog->str) == 0))
+    {
+      msg_error(SLOG_ERROR_PREFIX, 
+                evt_tag_str("Reason", "INPUTLOG and OUTPUTLOG must not be the same file"),
+                evt_tag_str("file", gstr_path_inputlog->str));
+
+      (void) slog_usage(context, group, NULL);
+      context = NULL;
+      retval = 1; //-- ERROR
+      goto CLEANUP_SLOGVERIFY;
+    }
+
 
   //-- Buffer size arguments if applicable ---
   if (TRUE == is_verbose)
@@ -613,7 +628,7 @@ int main(int argc, char *argv[])
   if (argc == 4)
     {
       char *endptr = NULL;
-      long parsedVal;
+      /*long parsedVal;
       parsedVal = strtol(argv[optidx], &endptr, 10);
       if ((endptr == argv[optidx]) || (*endptr != '\0'))
         {
@@ -637,7 +652,23 @@ int main(int argc, char *argv[])
               //-- value successfully parsed
               bufSize = (guint32)parsedVal;
             }
+        }*/
+
+      guint64 parsedVal = g_ascii_strtoull(argv[optidx], &endptr, 10);
+      if ((endptr == argv[optidx]) || (*endptr != '\0') || (parsedVal < (guint64)MIN_BUF_SIZE) || (parsedVal > (guint64)MAX_BUF_SIZE))
+        {
+          msg_warning(SLOG_ERROR_PREFIX,
+                      evt_tag_str("Reason", "Invalid buffer size argument. Default size is used instead!"),
+                      evt_tag_printf("Size", "%" G_GUINT64_FORMAT, (guint64)bufSize),
+                      evt_tag_int("Minimum buffer size", MIN_BUF_SIZE),
+                      evt_tag_int("Maximum buffer size", MAX_BUF_SIZE));
         }
+      else
+        {
+          //-- value successfully parsed
+          bufSize = (guint32)parsedVal;
+        }
+
       if (TRUE == is_verbose)
         {
           g_print("bufSize: %u\n", bufSize);

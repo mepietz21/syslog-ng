@@ -44,6 +44,7 @@
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <glib.h>
+#include <messages.h>
 
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 #include <openssl/params.h>
@@ -136,6 +137,16 @@ static gint cr_under_PRG(guchar *seed, guint *counter, const EVP_CIPHER *cipher,
                         gint size)
 {
   // calculate the number of aes blocks and ceil if it is not a multiple of the AES block size.
+
+  // new:
+
+  if (G_UNLIKELY(NULL == seed || NULL == counter || NULL == cipher || NULL == buffer || size <= 0))
+  {
+    g_warning("cr_under_PRG: Invalid input parameters");
+    return 0;
+  }
+
+
   double temp_m = ceil((double)size / AES_BLOCK_LEN);
   guint blocks = (guint) temp_m;
   gint paddedSize = blocks * AES_BLOCK_LEN;
@@ -556,19 +567,49 @@ int cr_PRF(guchar *input, gsize inputSize, guchar *key, guchar *output, guint8 o
   gsize outputLenCMAC;
 
   // add a byte for the outputSize, max len for the outputSize is 2^8 = 128
-  guchar _input[inputSize + 1], seed[16];
+  /* guchar _input[inputSize + 1], seed[16];
   memcpy(_input, input, inputSize);
 
   // The output size is an input value of the PRF, and should therefore change the output of the PRF the same way, as the key or input, would do.
   // input || outputSize, set the last byte to the output size.
-  _input[inputSize] = outputSize;
+  _input[inputSize] = outputSize; */
 
-  if (!cr_CMAC(key, _input, inputSize, seed, &outputLenCMAC, CMAC_LEN))
+  if (G_UNLIKELY(NULL == input || NULL == key || NULL == output || inputSize == 0 || outputSize == 0))
+    {
+      msg_warning(CR_WARNING_PREFIX, evt_tag_str("Reason", "cr_PRF: Invalid NULL or 0-length input"));
+      return 0;
+    }
+
+  /*if (!cr_CMAC(key, _input, inputSize, seed, &outputLenCMAC, CMAC_LEN))
     {
       // fixed: msg_warning instead of g_warning
       msg_warning("Failed to create CMAC as seed for a PRG as output for the variable PRF.");
       return 0;
+    }*/
+
+  // fixed: 
+  unsigned char *_input = g_try_malloc(inputSize + 1);
+  unsigned char seed[16];
+  if (NULL == _input)
+    {
+      msg_error(CR_ERROR_PREFIX, evt_tag_str("Reason", "Failed to allocate memory buffer"));
+      return 0;
+
     }
+
+  memcpy(_input, input, inputSize);
+  _input[inputSize] = outputSize;
+
+  if(!cr_CMAC(key, _input, inputSize + 1, seed, &outputLenCMAC, G_N_ELEMENTS(seed)))
+    {
+
+      msg_warning(CR_ERROR_PREFIX, evt_tag_str("Reason", "Failed to create CMAC as seed for PRG in cr_PRF"));
+      g_free(_input);
+      return 0;
+
+    }
+
+  g_free(_input);
 
   // stretch or cut the output of the PRF, by applying a PRG.
   cr_PRG128Context *ctx = cr_CreatePRG128Context(seed);
@@ -603,7 +644,7 @@ int cr_DeriveSubKeys(guchar masterSessionkey[KEY_SIZE], guchar encKey[KEY_SIZE],
                      guchar drnKey[KEY_SIZE], guchar tagKey[KEY_SIZE], guchar idKey[KEY_SIZE])
 {
   cr_PRGContext *ctx = cr_CreatePRGContext(masterSessionkey);
-  guchar *output = g_calloc(4, KEY_SIZE);
+  guchar *output = g_malloc0(4 * KEY_SIZE);
 
   // fixed: Warning for memory allocation
   if (ctx == NULL || output == NULL)

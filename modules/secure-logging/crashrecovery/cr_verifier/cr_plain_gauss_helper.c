@@ -38,6 +38,7 @@
 #include "cr_pi_shared.h"
 #include "cr_matrix.h"
 #include "cr_plain_gauss_helper.h"
+#include "messages.h"
 
 
 
@@ -184,13 +185,17 @@ GPtrArray *cr_pgh_Solve(struct cr_BMatrixType *Mat, GPtrArray *gpa, gboolean deb
 {
   if ((NULL == Mat) || (NULL == gpa))
     {
-      msg_warning("cr_pgh_Solve, ERROR, Nullpointer, Mat: %p, gpa: %p",
-                  (void *)Mat, (void *)gpa);
+      msg_warning("cr_pgh_Solve, ERROR, Nullpointer",
+                  evt_tag_printf("Mat", "%p", Mat),
+                  evt_tag_printf("gpa", "%p", gpa));
     }
 
   // fixed from g_printf
-  msg_info("cr_pgh_Solve, Mat->rows: %d, Mat->colsInBits: %d, Mat->buckets: %d, gpa->len: %d",
-           Mat->rows, Mat->colsInBits, Mat->buckets, gpa->len);
+  msg_info("cr_pgh_Solve",
+           evt_tag_int("Mat_rows", Mat->rows),
+           evt_tag_int("Mat_colsInBits", Mat->colsInBits),
+           evt_tag_int("Mat_buckets", Mat->buckets),
+           evt_tag_printf("gpa_len", "%u", gpa->len));
 
   uint64_t ndiff; //-- time diff in milliseconds
   //-- ForwardReduction ---
@@ -223,8 +228,8 @@ GPtrArray *cr_pgh_Solve(struct cr_BMatrixType *Mat, GPtrArray *gpa, gboolean deb
   //
   if (NULL == gpaAB)
     {
-      msg_error("Failed gpaAB, cr_pgh_ApplyBookkeeping: %s",
-                    error->message);
+      msg_error("Failed gpaAB, cr_pgh_ApplyBookkeeping",
+                evt_tag_str("error", error->message));
       g_error_free(error); //-- ERROR
     }
   else
@@ -246,8 +251,8 @@ GPtrArray *cr_pgh_Solve(struct cr_BMatrixType *Mat, GPtrArray *gpa, gboolean deb
   //
   if (NULL == gpa_c)
     {
-      msg_error("Failed gpaAB, cr_pgh_ApplyBookkeeping: %s",
-                    error->message);
+      msg_error("Failed gpaAB, cr_pgh_BackSubstitution",
+                evt_tag_str("error", error->message));
       g_error_free(error); //-- ERROR
     }
   else
@@ -459,7 +464,9 @@ GPtrArray *cr_pgh_ApplyBookkeeping(struct cr_BMatrixType *Imat, GPtrArray *gpa, 
   gboolean is_verbose = FALSE;
   if ((NULL == Imat) || (NULL == gpa))
     {
-      msg_error("Failed: cr_pgh_ApplyBookkeeping, NULL pointer in argument list: Imat: %p, gpa: %p", + (void *)Imat, (void *)gpa);
+      msg_error("Failed: cr_pgh_ApplyBookkeeping, NULL pointer in argument list",
+                evt_tag_printf("Imat", "%p", Imat),
+                evt_tag_printf("gpa", "%p", gpa));
       return NULL; //-- ERROR
     }
   g_print("cr_pgh_ApplyBookkeeping Imat->rows: %d, Imat->colsInBits: %d, Imat->buckets: %d\n", Imat->rows,
@@ -467,7 +474,9 @@ GPtrArray *cr_pgh_ApplyBookkeeping(struct cr_BMatrixType *Imat, GPtrArray *gpa, 
   g_print("cr_pgh_ApplyBookkeeping, gpa->len: %d\n", gpa->len);
   if ( gpa->len < (guint) Imat->colsInBits )
     {
-      msg_error("Failed: cr_pgh_ApplyBookkeeping gpa->len: %d < Imat->colsInBits: %d", + gpa->len, Imat->colsInBits);
+      msg_error("Failed: cr_pgh_ApplyBookkeeping gpa->len < Imat->colsInBits",
+                evt_tag_printf("gpa_len", "%u", gpa->len),
+                evt_tag_int("Imat_colsInBits", Imat->colsInBits));
       return NULL; //-- ERROR
     }
 
@@ -476,14 +485,17 @@ GPtrArray *cr_pgh_ApplyBookkeeping(struct cr_BMatrixType *Imat, GPtrArray *gpa, 
   GPtrArray *gpa_out = create_GPtrArray_cr_XOR_TYPE(Imat->rows, &err);
   if (NULL != err)
     {
-      msg_error("Failed: cr_pgh_ApplyBookkeeping %s", err->message);
+      msg_error("Failed: cr_pgh_ApplyBookkeeping",
+                evt_tag_str("error", err->message));
       g_error_free(err);
       return NULL; //-- ERROR
     }
 
   if (gpa_out->len < (guint) Imat->rows)
     {
-      msg_error("Failed: cr_pgh_ApplyBookkeeping gpa_out->len: %d < Imat->rows: %d", + gpa->len, Imat->rows);
+      msg_error("Failed: cr_pgh_ApplyBookkeeping gpa_out->len < Imat->rows",
+                evt_tag_printf("gpa_out_len", "%u", gpa->len),
+                evt_tag_int("Imat_rows", Imat->rows));
       return NULL;
     }
 
@@ -546,7 +558,9 @@ GPtrArray *cr_pgh_BackSubstitution(struct cr_BMatrixType *Mat, GPtrArray *gpa, G
   gboolean is_verbose = FALSE;
   if ((NULL == Mat) || (NULL == gpa))
     {
-      msg_error("failed: cr_pgh_BackSubstitution, NULL pointer in argument list: Mat: %p, gpa: %p", + (void *)Mat, (void *)gpa);
+      msg_error("failed: cr_pgh_BackSubstitution, NULL pointer in argument list",
+                evt_tag_printf("Mat", "%p", Mat),
+                evt_tag_printf("gpa", "%p", gpa));
       return NULL; //-- ERROR
     }
   g_print("cr_pgh_BackSubstituion, Mat->rows: %d, Mat->colsInBits %d, Mat->buckets: %d\n", Mat->rows, Mat->colsInBits,
@@ -554,7 +568,9 @@ GPtrArray *cr_pgh_BackSubstitution(struct cr_BMatrixType *Mat, GPtrArray *gpa, G
   g_print("cr_pgh_BackSubstituion, gpa->len: %d\n", gpa->len);
   if ( gpa->len < (guint) Mat->colsInBits )
     {
-      msg_error("failed: cr_pgh_BackSubstituioin gpa->len: %d < Mat->colsInBits: %d", + gpa->len, Mat->colsInBits);
+      msg_error("failed: cr_pgh_BackSubstituion gpa->len < Mat->colsInBits",
+                evt_tag_printf("gpa_len", "%u", gpa->len),
+                evt_tag_int("Mat_colsInBits", Mat->colsInBits));
       return NULL; //-- ERROR
     }
 
@@ -563,14 +579,17 @@ GPtrArray *cr_pgh_BackSubstitution(struct cr_BMatrixType *Mat, GPtrArray *gpa, G
   GPtrArray *gpa_out = create_GPtrArray_cr_XOR_TYPE(Mat->rows, &err); //-- ci
   if (NULL != err)
     {
-      msg_error("failed: cr_pgh_BackSubstitution %s", err->message);
+      msg_error("failed: cr_pgh_BackSubstitution",
+                evt_tag_str("error", err->message));
       g_error_free(err);
       return NULL; //-- ERROR
     }
 
   if (gpa_out->len < (guint) Mat->rows )
     {
-      msg_error("failed: cr_pgh_BackSubstituion gpa_out->len: %d < Mat->rows: %d", + gpa->len, Mat->rows);
+      msg_error("failed: cr_pgh_BackSubstituion gpa_out->len < Mat->rows",
+                evt_tag_printf("gpa_out_len", "%u", gpa->len),
+                evt_tag_int("Mat_rows", Mat->rows));
       return NULL; //-- ERROR
     }
 

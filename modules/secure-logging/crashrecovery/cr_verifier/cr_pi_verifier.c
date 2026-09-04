@@ -28,6 +28,7 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include <errno.h>
+#include "messages.h"
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -542,7 +543,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
           msg_error("Failed to seek in encrypted input log file", 
                     evt_tag_str("path", ctx->inEncFilePath), 
                     evt_tag_int("entry", i), 
-                    evt_tag_int64("offset", (gint64)offset));
+                    evt_tag_int("offset", (gint64)offset));
 
           (void) fprintf(ctx->protocolFile, 
                         "%s", 
@@ -686,8 +687,8 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
 
               if (lj >= garr_Tau->len) { 
                 msg_error("Random location is outside log range", 
-                          evt_tag_uint("location", lj), 
-                          evt_tag_uint("log_entries", garr_Tau->len), 
+                          evt_tag_int("location", lj), 
+                          evt_tag_int("log_entries", garr_Tau->len), 
                           evt_tag_int("iteration", i), 
                           evt_tag_int("random_index", j)); 
                   
@@ -775,7 +776,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
             {
               // fixed, old: g_print
               msg_warning("Log line has been tampered", 
-                          evt_tag_uint("line", lj));
+                          evt_tag_int("line", lj));
 
               (void) fprintf(ctx->protocolFile, "INFO: Line %u has been tampered!\n", lj);
             }
@@ -879,7 +880,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
   if (NULL == data_block)
     {
       msg_error("Failed to create aligned data block", 
-                evt_tag_uint("size", total_size));
+                evt_tag_int("size", total_size));
       cr_set_result(&res, 0, FALSE);
       (void) fprintf(ctx->protocolFile, "%s", "ERROR: Failed to create aligned data block for gpa_v!\n");
       goto LABEL_CLEANUP;

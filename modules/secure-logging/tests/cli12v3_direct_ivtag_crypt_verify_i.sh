@@ -23,7 +23,7 @@
 #############################################################################
 
 # Author: Airbus Commercial Aircraft <secure-logging@airbus.com>
-# File:   cli12v3_ivtag_plain_crypt_verify_i.sh
+# File:   cli12v3_direct_ivtag_crypt_verify_i.sh
 # Date:   2026-05-29
 #
 # Smoke Test of cli tools slogkey, slogencrypt and slogverify

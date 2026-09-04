@@ -64,6 +64,7 @@
 #include "cr_pi_types.h"
 #include "cr_pi_verifier.h"
 #include "cr_plain_gauss_helper.h"
+#include "messages.h"
 
 
 
@@ -116,7 +117,7 @@ int main(int argc, char *argv[])
   if (!g_option_context_parse(context, &argc, &argv, &error))
     {
       // If parsing failed, print the error and exit.
-      msg_error("Parsing options: %s", error->message);
+      msg_error("Parsing options", evt_tag_str("error", error->message));
       g_error_free(error);
       g_option_context_free(context);
       return 1; //-- ERROR
@@ -139,7 +140,7 @@ int main(int argc, char *argv[])
   ctx.masterKeyPath[PATH_MAX - 1] = '\0';
   if ( ! g_file_test(ctx.masterKeyPath, G_FILE_TEST_IS_REGULAR))
     {
-      msg_error("Invalid full file name of master key: %s", ctx.masterKeyPath);
+      msg_error("Invalid full file name of master key", evt_tag_str("path", ctx.masterKeyPath));
       g_option_context_free(context);
       return 1; //-- ERROR
     }
@@ -150,7 +151,7 @@ int main(int argc, char *argv[])
   ctx.inEncFilePath[PATH_MAX - 1] = '\0';
   if ( ! g_file_test(ctx.inEncFilePath, G_FILE_TEST_IS_REGULAR))
     {
-      msg_error("Invalid full file name of encrypted input log file: %s", ctx.inEncFilePath);
+      msg_error("Invalid full file name of encrypted input log file", evt_tag_str("path", ctx.inEncFilePath));
       g_option_context_free(context);
       return 1; //-- ERROR
     }
@@ -164,7 +165,7 @@ int main(int argc, char *argv[])
     {
       if ( ! g_file_test(dirname, G_FILE_TEST_IS_DIR))
         {
-          msg_error("Invalid out directory: %s of file %s", dirname, ctx.outPlainFilePath);
+          msg_error("Invalid out directory", evt_tag_str("dir", dirname), evt_tag_str("file", ctx.outPlainFilePath));
           g_option_context_free(context);
           g_free(dirname);
           return 1; //-- ERROR
@@ -200,13 +201,13 @@ int main(int argc, char *argv[])
   maxlogs = strtol(argv[4], &endptr, 10);
   if (*endptr != '\0')
     {
-      msg_error("Invalid maxlogs, expected a number: %s", argv[4]);
+      msg_error("Invalid maxlogs, expected a number", evt_tag_str("value", argv[4]));
       g_option_context_free(context);
       return 1; //-- ERROR
     }
   if (maxlogs <= 0)
     {
-      msg_error("Out of range: maxlogs: %d", maxlogs);
+      msg_error("Out of range: maxlogs", evt_tag_printf("maxlogs", "%d", maxlogs));
       g_option_context_free(context);
       return 1; //-- ERROR
     }
@@ -216,25 +217,25 @@ int main(int argc, char *argv[])
   double temp_m = ceil(ctx.n * THE_C);
   ctx.m = (int) temp_m;
 
-  msg_info("key: %s", argv[1]);
-  msg_info("in: %s", argv[2]);
-  msg_info("out: %s", argv[3]);
-  msg_info("maxlogs: %s", argv[4]);
+  msg_info("key", evt_tag_str("path", argv[1]));
+  msg_info("in", evt_tag_str("path", argv[2]));
+  msg_info("out", evt_tag_str("path", argv[3]));
+  msg_info("maxlogs", evt_tag_str("value", argv[4]));
 
   g_option_context_free(context);
 
-  msg_info("ctx.masterKeyPath: %s", ctx.masterKeyPath);
-  msg_info("ctx.logFileDirectory: %s", ctx.logFileDirectory);
-  msg_info("ctx.inEncFilePath: %s", ctx.inEncFilePath);
-  msg_info("ctx.outPlainFilePath: %s", ctx.outPlainFilePath);
-  msg_info("ctx.outProtocolPath: %s", ctx.outProtocolPath);
-  msg_info("ctx.n: %d", ctx.n);
-  msg_info("ctx.m: %d", ctx.m);
+  msg_info("ctx.masterKeyPath", evt_tag_str("path", ctx.masterKeyPath));
+  msg_info("ctx.logFileDirectory", evt_tag_str("path", ctx.logFileDirectory));
+  msg_info("ctx.inEncFilePath", evt_tag_str("path", ctx.inEncFilePath));
+  msg_info("ctx.outPlainFilePath", evt_tag_str("path", ctx.outPlainFilePath));
+  msg_info("ctx.outProtocolPath", evt_tag_str("path", ctx.outProtocolPath));
+  msg_info("ctx.n", evt_tag_printf("n", "%u", (unsigned)ctx.n));
+  msg_info("ctx.m", evt_tag_printf("m", "%u", (unsigned)ctx.m));
 
   char szBuffer[256];
   memset(szBuffer, 0, sizeof(szBuffer));
   get_human_timestamp(szBuffer);
-  msg_info("%s", szBuffer);
+  msg_info("timestamp", evt_tag_str("time", szBuffer));
 
   struct timespec start, end;
   start = get_ts_now();
@@ -283,7 +284,7 @@ int main(int argc, char *argv[])
   msg_info("");
   memset(szBuffer, 0, sizeof(szBuffer));
   get_human_timestamp(szBuffer);
-  msg_info("%s", szBuffer);
+  msg_info("timestamp", evt_tag_str("time", szBuffer));
 
   //-- clean up ---
   if (NULL != ctx.protocolFile)

@@ -69,6 +69,7 @@
 #include "cr_pi_shared.h"
 #include "cr_pi_logger_context.h"
 #include "cr_pi_logger.h"
+#include "messages.h"
 
 
 
@@ -220,18 +221,18 @@ int main(int argc, char *argv[])
       return 1; //-- ERROR
     }
 
-  msg_info("key (initial key): %s", argv[1]);
-  msg_info("in (plain log file): %s", argv[2]);
-  msg_info("out (enc log file): %s", argv[3]);
-  msg_info("maxlogs (count of log lines): %s", argv[4]);
+  msg_info("key (initial key)", evt_tag_str("path", argv[1]));
+  msg_info("in (plain log file)", evt_tag_str("path", argv[2]));
+  msg_info("out (enc log file)", evt_tag_str("path", argv[3]));
+  msg_info("maxlogs (count of log lines)", evt_tag_printf("value", "%s", argv[4]));
 
   g_option_context_free(context);
 
-  msg_info("szMasterKeyPath: %s", szMasterKeyPath);
-  msg_info("szInputFileName: %s", szInputFileName);
-  msg_info("szOutputFileName: %s", szOutputFileName);
-  msg_info("szOutputDir: %s", szOutputDir); //-- derived from szOutputFileName. Will NOT be created. Must exist.
-  msg_info("maxlogs: %d", maxlogs);
+  msg_info("szMasterKeyPath", evt_tag_str("path", szMasterKeyPath));
+  msg_info("szInputFileName", evt_tag_str("path", szInputFileName));
+  msg_info("szOutputFileName", evt_tag_str("path", szOutputFileName));
+  msg_info("szOutputDir", evt_tag_str("path", szOutputDir)); //-- derived from szOutputFileName. Will NOT be created. Must exist.
+  msg_info("maxlogs", evt_tag_printf("value", "%d", maxlogs));
 
   cr_pi_logger_context loggerCtx = {NULL, NULL, NULL, NULL, INT_MAX};
 
@@ -248,7 +249,7 @@ int main(int argc, char *argv[])
   char szBuffer[256];
   memset(szBuffer, 0, sizeof(szBuffer));
   get_human_timestamp(szBuffer);
-  msg_info("%s", szBuffer);
+  msg_info("timestamp", evt_tag_str("time", szBuffer));
   struct timespec start, end;
   start = get_ts_now();
   error = NULL;
@@ -290,7 +291,7 @@ int main(int argc, char *argv[])
     }
 
   gboolean is_add = FALSE;
-  msg_info("gpa_logs->len: %d", gpa_logs->len);
+  msg_info("gpa_logs->len", evt_tag_printf("len", "%u", gpa_logs->len));
   for (guint i = 0; i < gpa_logs->len; ++i)
     {
       // Pass the modified string to AddLogEntry (add item).
@@ -303,13 +304,13 @@ int main(int argc, char *argv[])
                       evt_tag_printf("length", "%zu", line->len), 
                       evt_tag_printf("max_length", "%d", MAX_LINE_LENGTH));
 
-          msg_info("Before truncate: %s", line->str);
+          msg_info("Before truncate", evt_tag_str("line", line->str));
           truncate_utf8_gstring(line, MAX_LINE_LENGTH);
-          msg_info("After truncate: %s", line->str);
+          msg_info("After truncate", evt_tag_str("line", line->str));
         }
       if ( (0 == (i & 511)) || (i == (gpa_logs->len - 1)))
         {
-          msg_info("\x1b[2K\r  process line %d of %d", i + 1, gpa_logs->len);
+          msg_info("process line", evt_tag_printf("current", "%u", i + 1), evt_tag_printf("total", "%u", gpa_logs->len));
         }
       is_add = cr_AddLogEntry(ctx, (unsigned char *)(line->str), line->len); //-- line->len: count of octets
       if (FALSE == is_add)
@@ -325,11 +326,11 @@ int main(int argc, char *argv[])
 
   if (TRUE == is_add)
     {
-      msg_info("cr_logger: %d Logs have been written successfully", gpa_logs->len);
+      msg_info("cr_logger: Logs have been written successfully", evt_tag_printf("count", "%u", gpa_logs->len));
     }
   else
     {
-      msg_info("cr_logger: %d Logs have NOT been written successfully", gpa_logs->len);
+      msg_info("cr_logger: Logs have NOT been written successfully", evt_tag_printf("count", "%u", gpa_logs->len));
     }
 
 
@@ -355,7 +356,7 @@ int main(int argc, char *argv[])
   msg_info("");
   memset(szBuffer, 0, sizeof(szBuffer));
   get_human_timestamp(szBuffer);
-  msg_info("%s", szBuffer);
+  msg_info("timestamp", evt_tag_str("time", szBuffer));
 
   //-- return value main logic
   if (FALSE == is_add)
@@ -391,7 +392,7 @@ GPtrArray *cr_pi_logger_main_read_logs_glib(const gchar *path, gint max_log_coun
   GIOChannel *channel = g_io_channel_new_file(path, "r", error);
   if (!channel)
     {
-      msg_error("ERROR: g_io_channel_new_file, file: %s", path);
+      msg_error("g_io_channel_new_file failed", evt_tag_str("path", path));
       return NULL;
     }
 

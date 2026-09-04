@@ -74,7 +74,7 @@ static GString *getLogEntry(SLogFile *f);
 static gboolean putLogEntry(SLogFile *f, GString *line);
 
 // Clean up routine for GPtrArray
-static void SLogStringFree(gpointer *arg);
+static void SLogStringFree(gpointer arg);
 
 
 /*
@@ -585,7 +585,9 @@ gboolean sLogEntry(
     }
 
   // Compute current log entry number
-  gchar *counterString = g_base64_encode((const guchar *)&numberOfLogEntries, sizeof(numberOfLogEntries));
+  //gchar *counterString = g_base64_encode((const guchar *)&numberOfLogEntries, sizeof(numberOfLogEntries));
+  guint64 counter_le = GUINT64_TO_LE(numberOfLogEntries);
+  gchar *counterString = g_base64_encode((const guchar *)&counter_le, sizeof(counter_le));
 
   // This buffer holds everything: AggregatedMAC, IV, Tag, and log message
   // Binary data cannot be larger than its base64 encoding
@@ -1002,8 +1004,11 @@ gboolean PRF(const guchar *key, const guchar *originalInput,
 
   size_t label_len = strlen(label);
   size_t context_len = strlen(context);
-  size_t output_len = sizeof(outputLength); //-- TODO clarify
-  size_t gsize_len = sizeof(gsize);
+
+  //fixed
+  guint32 output_len_val = GUINT32_TO_LE((guint32)outputLength);
+  size_t output_len = sizeof(guint32); //-- TODO clarify
+  size_t index_len = sizeof(guint32);
 
 #if defined(IS_SLOG_VERBOSE) && (IS_SLOG__VERBOSE == 1)
   GString *gstrhelp = g_string_new((char *)originalInput);
@@ -1016,7 +1021,7 @@ gboolean PRF(const guchar *key, const guchar *originalInput,
 #endif /* IS_SLOG_VERBOSE */
 
   //-- content:  i || Label || 00 || Context || outputLength
-  gsize myInputLength = gsize_len + label_len + 1U + context_len + output_len;
+  gsize myInputLength = index_len + label_len + 1U + context_len + output_len;
 
   guchar *input = g_try_new0(guchar, myInputLength);
   if (NULL == input)
@@ -1030,12 +1035,20 @@ gboolean PRF(const guchar *key, const guchar *originalInput,
   for (gsize i = 0U ; i < n ; i++)
     {
       //-- content of input:  i || Label || 00 || Context || outputLength
-      (void) memcpy(input, &i, gsize_len);
+      /*(void) memcpy(input, &i, gsize_len);
       (void) memcpy(input + gsize_len, label, label_len);
       input[gsize_len + label_len] = 0;
 
       (void) memcpy(input + gsize_len + label_len + 1U, context, context_len);
-      (void) memcpy(input + gsize_len + label_len + 1U + context_len, &outputLength, output_len);
+      (void) memcpy(input + gsize_len + label_len + 1U + context_len, &outputLength, output_len);*/
+
+      //fixed
+      guint32 i_le = GUINT32_TO_LE((guint32)i);
+      (void) memcpy(input, &i_le, index_len);
+      (void) memcpy(input + index_len, label, label_len);
+      input[index_len + label_len] = 0;
+      (void) memcpy(input + index_len + label_len + 1U, context, context_len);
+      (void) memcpy(input + index_len + label_len + 1U +  context_len, &output_len_val, output_len);
 
       if (!cmac(ktmp, input, myInputLength, output + i * CMAC_LENGTH, &outlen, CMAC_LENGTH))
         {
@@ -1052,12 +1065,22 @@ gboolean PRF(const guchar *key, const guchar *originalInput,
   if ((outputLength % CMAC_LENGTH) != 0U)
     {
       guchar buf[CMAC_LENGTH];
+      //added
+      guint32 n_le = GUINT32_TO_LE((guint32)n);
 
-      (void) memcpy (input, &n, gsize_len);
+      /*(void) memcpy (input, &n, gsize_len);
       (void) memcpy(input + gsize_len, label, label_len);
       input[gsize_len + label_len] = 0;
       (void) memcpy(input + gsize_len + label_len + 1U, context, context_len);
-      (void) memcpy(input + gsize_len + label_len + 1U + context_len, &outputLength, output_len);
+      (void) memcpy(input + gsize_len + label_len + 1U + context_len, &outputLength, output_len);*/
+
+      //fixed
+      (void) memcpy(input, &n_le, index_len);
+      (void) memcpy(input + index_len, label, label_len);
+      input[index_len + label_len] = 0;
+      (void) memcpy(input + index_len + label_len + 1U, context, context_len);
+      (void) memcpy(input + index_len + label_len + 1U + context_len, &output_len_val, output_len);
+
 
       if (!cmac(ktmp, input, myInputLength, buf, &outlen, CMAC_LENGTH))
         {
@@ -1106,11 +1129,26 @@ gboolean generateMasterKey(guchar *masterkey)
 
 gboolean deriveHostKey(const guchar *masterkey, const gchar *macAddr, const gchar *serial, guchar *hostkey)
 {
-  gchar concatString[strlen(macAddr) + strlen(serial) + 1U];
+  /*gchar concatString[strlen(macAddr) + strlen(serial) + 1U];
   concatString[0] = 0;
   strncat(concatString, macAddr, sizeof(concatString) - strlen(concatString) - 1U);
   strncat(concatString, serial, sizeof(concatString) - strlen(concatString) - 1U);
-  return PRF(masterkey, (guchar *) concatString, strlen(concatString), hostkey, KEY_LENGTH);
+  return PRF(masterkey, (guchar *) concatString, strlen(concatString), hostkey, KEY_LENGTH);*/
+
+  // fixed: 
+
+  if (G_UNLIKELY(NULL == masterkey || NULL == macAddr || NULL == serial || NULL == hostkey)){
+
+    msg_error(SLOG_ERROR_PREFIX, evt_tag_str("Reason", "deriveHostKey: NULL parameter"));
+    return false;
+  }
+
+  gchar *concatString = g_strdup_printf("%s%s", macAddr, serial);
+  gsize concat_len = strlen(concatString);
+  gboolean ret = PRF(masterkey, (const guchar *)concatString, concat_len, hostkey, KEY_LENGTH);
+  g_free(concatString);
+  return ret;
+
 }
 
 
@@ -2680,7 +2718,11 @@ gboolean addValueToTable(GHashTable *table, guint64 value)
     }
   //-- Create new key to string and use value as key
   char *key = g_strdup_printf("%" G_GUINT64_FORMAT, value);
-  return g_hash_table_insert(table, key, GUINT_TO_POINTER(value));
+  //return g_hash_table_insert(table, key, GUINT_TO_POINTER(value));
+
+  guint64 *val_ptr = g_new0(guint64, 1);
+  *val_ptr = value;
+  return g_hash_table_insert(table, key, val_ptr);
 }
 
 // Get a single line from a log file
@@ -2720,9 +2762,12 @@ gboolean putLogEntry(SLogFile *f, GString *line)
 }
 
 // Clean up routine for GPtrArray
-void SLogStringFree(gpointer *arg)
+// fixed
+void SLogStringFree(gpointer arg)
 {
+  if (NULL != arg){
   (void) g_string_free((GString *)arg, TRUE);
+  }
 }
 
 

@@ -251,6 +251,7 @@ get_logrotcnt() {
 # mode in conf
 check_log_files() {
     local target_dir="$1"
+    local extension="$2"
     local count=${NUMBER_OF_LOGFILES}
     local missing=0
 
@@ -265,7 +266,7 @@ check_log_files() {
     # -- Loop through the expected file numbers ---
     for ((i = 1; i <= count; i++)); do
         # Construct the full path
-        local file_path="${target_dir}/cr_log_part${i}.log"
+        local file_path="${target_dir}/cr_log_part${i}.${extension}"
 
         if [[ -f ${file_path} ]]; then
             echo "[OK] Found: ${file_path}"
@@ -480,7 +481,7 @@ stop_syslog
 
 echo "Check whether all ${NUMBER_OF_LOGFILES} log files have been created"
 # check_log_files "${TEST}" >/dev/null
-check_log_files "${TEST}"
+check_log_files "${TEST}" "enc"
 RETVAL_CL=$?
 echo "RETVAL_CL: ${RETVAL_CL}"
 if [[ ! ${RETVAL_CL} -eq 0 ]]; then
@@ -528,10 +529,29 @@ i=0
 while [[ ${i} -lt ${NUMBER_OF_LOGFILES} ]]; do
     i=$((i + 1))
 
-    PLAIN_FILE="${TEST}/cr_log_part${i}.log"
+    PLAIN_FILE="${TEST}/plainlog_${i}.txt"
     ENC_FILE="${TEST}/cr_log_part${i}.enc"
     VERIFY_FILE="${TEST}/cr_log_part${i}_enc_verifier.txt"
+    EXPECTED_FILE="${TEST}/cr_log_part${i}_expected.txt"
+
     echo "LOGROTCNT: ${LOGROTCNT}"
+
+    if [[ ${LOGROTCNT} -eq 0 ]]; then
+        START_LOG=1
+    else
+        START_LOG=$(((i - 1) * LOGROTCNT + 1))
+    fi
+
+    END_LOG=$((i * LOGROTCNT))
+    if [[ ${END_LOG} -gt ${MAX_LOOP} ]]; then
+        END_LOG=${MAX_LOOP}
+    fi
+
+    : >"${EXPECTED_FILE}"
+    for ((j = START_LOG; j <= END_LOG; j++)); do
+        cat "${TEST}/plainlog_${j}.txt" >>"${EXPECTED_FILE}"
+    done
+
     if [[ ! -e ${ENC_FILE} ]]; then
         echo "Error: Required path '${ENC_FILE}' not found."
         cnt_error=$((cnt_error + 1))
@@ -555,7 +575,7 @@ while [[ ${i} -lt ${NUMBER_OF_LOGFILES} ]]; do
             echo "-- Check verified log file"
             echo "----------------------------------------"
             echo " "
-            HASH1=$(sha256sum "${PLAIN_FILE}" | awk '{ print $1 }')
+            HASH1=$(sha256sum "${EXPECTED_FILE}" | awk '{ print $1 }')
             if echo "${HASH1}  ${VERIFY_FILE}" | sha256sum -c - >/dev/null 2>&1; then
                 # 'sha256sum -c' exits with 0 (success) if they match
                 echo "Original log file is identical to verifier output as expected."

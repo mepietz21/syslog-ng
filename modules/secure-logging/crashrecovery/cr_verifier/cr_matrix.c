@@ -39,6 +39,7 @@
 #include "cr_randomstuff.h"
 #include "cr_plain_gauss_helper.h"
 #include "cr_matrix.h"
+#include "messages.h"
 
 //
 //-- cr_B256 -----

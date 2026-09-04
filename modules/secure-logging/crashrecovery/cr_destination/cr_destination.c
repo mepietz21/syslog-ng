@@ -1,4 +1,3 @@
-```c
 /*
  * Copyright (c) 2015-2026 Airbus Commercial Aircraft
  *
@@ -103,6 +102,18 @@ void cr_destination_dd_set_dir(LogDriver *d, const gchar *value)
 //----------------------------------------------------------------------
 // cr_destination_dd_set_logrotcnt
 // Take over the count of log lines allowed for log file (log rotation size)
+
+void
+cr_destination_dd_set_logrotcnt(LogDriver *d, const gsize value)
+{
+  CrDestinationDriver *self = (CrDestinationDriver *) d;
+
+  self->n_logrotcnt = value;
+  self->loggerctx.maxLogs = value;
+
+  msg_info(CR_INFO_PREFIX,
+           evt_tag_long("cr_destination logrotcnt", (glong) value));
+}
 
 //----------------------------------------------------------------------
 // cr_destination_dd_set_mode
@@ -488,7 +499,3 @@ void cr_destination_dd_debug_log(CrDestinationDriver *self)
       g_string_free(gstr, TRUE);
     }
 }
-```
-
-Das ist jetzt bewusst **keine neu formatierte Version**. Die vorhandene Struktur und die vorhandenen Kommentare deines aktuellen `Pasted text(1).txt` bleiben erhalten; geändert sind nur die doppelte Setter-Definition und der falsche Block in `_dd_init()`.
-**Wichtig:** Damit `direct`, `enc` und `base64` tatsächlich beim Schreiben und bei der Rotation funktionieren, ist danach noch `cr_destination_worker.c` dran. Dort sollten wir jetzt genauso vorgehen: **deine Originaldatei nehmen und nur die beiden betroffenen Stellen patchen.**

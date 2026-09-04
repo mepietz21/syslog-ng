@@ -369,12 +369,20 @@ int main(int argc, char *argv[])
   // Buffer size arguments if applicable
   if (argc == 6)
     {
-      int result = sscanf(argv[optidx], "%"G_GUINT64_FORMAT, &bufSize);
-      if ((result == EOF) || (bufSize <= MIN_BUF_SIZE) || (bufSize > MAX_BUF_SIZE))
+      // fixed: TODO26-23 Parsing Buffer
+      //int result = sscanf(argv[optidx], "%"G_GUINT64_FORMAT, &bufSize);
+      gchar *endptr = NULL;
+      bufSize = g_ascii_strtoull(argv[optidx], &endptr, 10);
+
+
+      //if ((result == EOF) || (bufSize <= MIN_BUF_SIZE) || (bufSize > MAX_BUF_SIZE))
+      if (endptr == argv[optidx] || *endptr != '\0' || bufSize <= MIN_BUF_SIZE || bufSize > MAX_BUF_SIZE)
         {
           msg_error(SLOG_ERROR_PREFIX,
-                    evt_tag_str("Reason", "Invalid buffer size."),
-                    evt_tag_printf("Size", "%" G_GUINT64_FORMAT, bufSize),
+                    //evt_tag_str("Reason", "Invalid buffer size."),
+                    //evt_tag_printf("Size", "%" G_GUINT64_FORMAT, bufSize),
+                    evt_tag_str("Reason", "Invalid buffer size argument"),
+                    evt_tag_str("Argument", argv[optidx]),
                     evt_tag_int("Minimum buffer size", MIN_BUF_SIZE),
                     evt_tag_int("Maximum buffer size", MAX_BUF_SIZE));
           retval = 1; //-- ERROR
@@ -388,6 +396,37 @@ int main(int argc, char *argv[])
   //
 
   // Open input file
+  // fixed: TODO1 - Identical input and output paths
+
+  if (g_strcmp0(gstr_path_inputlog->str, gstr_path_outputlog->str) == 0)
+  {
+
+      msg_error(SLOG_ERROR_PREFIX,
+                evt_tag_str("Reason", "Input and output log file paths are identical!"),
+                evt_tag_str("file", gstr_path_inputlog->str));
+      retval = -1; //-- ERROR
+      goto CLEANUP_SLOGENCRYPT;
+
+  }
+
+  if (g_strcmp0(gstr_path_hostkey->str, gstr_path_newhostKey->str) == 0)
+  {
+      msg_error(SLOG_ERROR_PREFIX,
+                evt_tag_str("Reason", "Input and output key file paths are identical!"),
+                evt_tag_str("file", gstr_path_hostkey->str));
+      retval = -1; //-- ERROR
+      goto CLEANUP_SLOGENCRYPT;
+  }
+
+  if (gstr_path_inputMAC->len > 0 && g_strcmp0(gstr_path_inputMAC->str, gstr_path_outputMAC->str) == 0)
+  {
+      msg_error(SLOG_ERROR_PREFIX,
+                evt_tag_str("Reason", "Input and output MAC file paths are identical!"),
+                evt_tag_str("file", gstr_path_inputMAC->str));
+      retval = -1; //-- ERROR
+      goto CLEANUP_SLOGENCRYPT;
+  }
+
   fp_inputFile = fopen(gstr_path_inputlog->str, "r");
   if (NULL == fp_inputFile)
     {
