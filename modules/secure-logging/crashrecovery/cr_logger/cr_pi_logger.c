@@ -35,9 +35,148 @@
 #include "utils_slog.h"
 #include "cr_pi_logger.h"
 #include "cr_crypto.h"
+#include "messages.h"
 
 
 #define SESSION_KEY
+
+static void unref_gstring_wrapper(void *data)
+{
+  // The FALSE here ensures only the GString structure is freed
+  // if you want to keep the data, but usually in a free_func
+  // you want TRUE to free the character data as well.
+  if (data)
+    g_string_free((GString *)data, TRUE);
+}
+
+/* ---------------------------------------------------------------------
+ * cr_pi_logger_main_read_logs_glib
+ *
+ * in  path: full file name of log file to read
+ * in  maxlogCount: Maximal count of lines that is read
+ * in/out error
+ *
+ * The caller owns the returned GPtrArray.
+ * When no longer needed, the caller has to clean up memory by
+ * calling  g_ptr_array_free(gpa_logs, TRUE);
+ * Note: The length of line is NOT limited. Caller can do this later
+ * when needed. Also the new line is NOT stripped here.
+ * When the input file is not utf-8 this function will normalize
+ * it to utf-8 and replace invalid characters by hexdump.
+ * In the returned GPtrArray of GString pointers, each string
+ * is provided as provided by the input file.
+ *
+ * return GPtrArray of GStrings or NULL in case of error
+ */
+GPtrArray *cr_pi_logger_main_read_logs_glib(const gchar *path, gint max_log_count, GError **error)
+{
+  GIOChannel *channel = g_io_channel_new_file(path, "r", error);
+  if (!channel)
+    {
+      msg_error("g_io_channel_new_file failed", evt_tag_str("path", path));
+      return NULL;
+    }
+
+  // --- Explicitly set encoding to NULL to read raw bytes ---
+  // This prevents g_io_channel_read_line from trying to validate/convert
+  // UTF-8 itself, which would cause a G_IO_STATUS_ERROR.
+  GIOStatus encoding_status = g_io_channel_set_encoding(channel, NULL, error);
+  if (encoding_status == G_IO_STATUS_ERROR)
+    {
+      // fixed: msg_error
+      msg_error("Failed to set input encoding", 
+                evt_tag_str("error", (*error)->message));
+      g_io_channel_unref(channel);
+      return NULL;
+    }
+
+  // We will read raw bytes, so no encoding is set.
+  GPtrArray *gpa_logs = g_ptr_array_new_with_free_func(unref_gstring_wrapper);
+  GIOStatus status = G_IO_STATUS_NORMAL;
+  gchar *raw_line_buffer = NULL;
+  gsize raw_line_len = 0;
+  gboolean is_found_invalid = FALSE;
+
+  // --- Main loop to read lines (raw) ---
+  while (gpa_logs->len < (guint)max_log_count &&
+         (status = g_io_channel_read_line(channel,
+                                          &raw_line_buffer,
+                                          &raw_line_len,
+                                          NULL,
+                                          error)) == G_IO_STATUS_NORMAL)
+    {
+      GString *sanitized_line = g_string_new("");
+      const gchar *start = raw_line_buffer;
+      const gchar *end_of_buffer = raw_line_buffer + raw_line_len;
+
+      // --- Sanitization loop for the current line ---
+      while (start < end_of_buffer)
+        {
+          const gchar *first_invalid = NULL;
+
+          //-- Check the rest of the buffer for validity
+          gboolean is_valid = g_utf8_validate(start,       // Start of chunk to check
+                                              end_of_buffer - start, // Length of chunk
+                                              &first_invalid); // Will point to bad byte
+
+          if (is_valid)
+            {
+              //-- The rest of the buffer is valid UTF-8.
+              //   Append it all and finish with this line.
+              g_string_append_len(sanitized_line, start, end_of_buffer - start);
+              break; // Exit the sanitization loop
+            }
+          else
+            {
+              //-- We found an invalid byte at 'first_invalid'.
+              is_found_invalid = TRUE;
+              //-- First, append the *valid* part before the bad byte.
+              gssize valid_chunk_len = first_invalid - start;
+              if (valid_chunk_len > 0)
+                {
+                  g_string_append_len(sanitized_line, start, valid_chunk_len);
+                }
+
+              //-- Now, append the bad byte as a hex string.
+              //   We cast to guint8 to ensure it's treated as an unsigned 0-255 value.
+              g_string_append_printf(sanitized_line, "%02X", (guint8)*first_invalid);
+
+              //-- Move our 'start' pointer to *after* the bad byte
+              //   to continue scanning.
+              start = first_invalid + 1;
+            }
+        } // --- End of sanitization loop ---
+
+      // Add the fully sanitized (and valid UTF-8) string to our array
+      g_ptr_array_add(gpa_logs, sanitized_line); // g_ptr_array "steals" the string
+
+      g_free(raw_line_buffer);
+      raw_line_buffer = NULL; // Reset for the next g_io_channel_read_line
+    }
+
+  g_free(raw_line_buffer); // Clean up in case of loop exit/error
+
+  if (TRUE == is_found_invalid)
+    {
+      // fixed: msg_warning
+      msg_warning("Input log file contains invalid bytes", 
+                  evt_tag_str("path", path));
+    }
+
+  if (G_IO_STATUS_ERROR == status)
+    {
+      //-- This only catches real I/O errors now
+      // fixed: msg_error
+      msg_error("Failed to read input log file", 
+                evt_tag_str("path", path));
+      g_ptr_array_free(gpa_logs, TRUE); //-- Clean up
+      g_io_channel_unref(channel);
+      return NULL;
+    }
+
+  g_io_channel_unref(channel);
+  return gpa_logs;
+}
 
 //----------------------------------------------------------------------
 // cr_AddLogEntry
@@ -628,6 +767,8 @@ gboolean cr_writePRGToFile(cr_PRGContext *p_prg, FILE *file, unsigned char *buff
     }
   return TRUE; //-- SUCCESS
 }
+
+
 
 
 

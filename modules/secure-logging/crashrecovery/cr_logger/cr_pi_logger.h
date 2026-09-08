@@ -109,6 +109,7 @@ gboolean cr_initializeLogFileWithPseudoRandomPad(cr_PRGContext *p_prg, FILE *fil
 gboolean cr_writePRGToFile(cr_PRGContext *p_prg, FILE *file, unsigned char *buffer, size_t bufferSize);
 gboolean cr_updateKey(cr_PIContext *ctx);
 int cr_encryptLog(const unsigned char *key, const unsigned char *logMessage, size_t logMessageSize, unsigned char *cipherLogMessage);
+GPtrArray *cr_pi_logger_main_read_logs_glib(const gchar *path, gint max_log_count, GError **error);
 gboolean init_cr_logger_functionality(cr_pi_logger_context *p_loggerctx, cr_PIContext **pp_pictx,
                                       cr_PRGContext **pp_prg);
 

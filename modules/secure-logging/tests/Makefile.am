@@ -3,7 +3,11 @@
 if ENABLE_SLOG
 
 modules_secure_logging_tests_TESTS = \
-	modules/secure-logging/tests/test_secure_logging
+	modules/secure-logging/tests/test_secure_logging \
+	modules/secure-logging/tests/test_cr_common \
+	modules/secure-logging/tests/test_cr_destination \
+	modules/secure-logging/tests/test_cr_logger \
+	modules/secure-logging/tests/test_cr_verifier
 
 check_PROGRAMS += \
 	${modules_secure_logging_tests_TESTS}
@@ -32,7 +36,42 @@ modules_secure_logging_tests_test_secure_logging_LDADD = \
 	-dlpreopen ${top_builddir}/modules/secure-logging/libsecure-logging.la \
 	-dlpreopen ${top_builddir}/modules/syslogformat/libsyslogformat.la
 
+modules_secure_logging_tests_test_cr_common_CPPFLAGS = \
+	$(modules_secure_logging_tests_test_secure_logging_CPPFLAGS)
+
+modules_secure_logging_tests_test_cr_common_CFLAGS = \
+	$(modules_secure_logging_tests_test_secure_logging_CFLAGS)
+
+modules_secure_logging_tests_test_cr_common_LDADD = \
+	$(modules_secure_logging_tests_test_secure_logging_LDADD)
+
+modules_secure_logging_tests_test_cr_destination_CPPFLAGS = \
+	$(modules_secure_logging_tests_test_secure_logging_CPPFLAGS)
+
+modules_secure_logging_tests_test_cr_destination_CFLAGS = \
+	$(modules_secure_logging_tests_test_secure_logging_CFLAGS)
+
+modules_secure_logging_tests_test_cr_destination_LDADD = \
+	$(modules_secure_logging_tests_test_secure_logging_LDADD)
+
+modules_secure_logging_tests_test_cr_logger_CPPFLAGS = \
+	$(modules_secure_logging_tests_test_secure_logging_CPPFLAGS)
+
+modules_secure_logging_tests_test_cr_logger_CFLAGS = \
+	$(modules_secure_logging_tests_test_secure_logging_CFLAGS)
+
+modules_secure_logging_tests_test_cr_logger_LDADD = \
+	$(modules_secure_logging_tests_test_secure_logging_LDADD)
+
+modules_secure_logging_tests_test_cr_verifier_CPPFLAGS = \
+	$(modules_secure_logging_tests_test_secure_logging_CPPFLAGS)
+
+modules_secure_logging_tests_test_cr_verifier_CFLAGS = \
+	$(modules_secure_logging_tests_test_secure_logging_CFLAGS)
+
+modules_secure_logging_tests_test_cr_verifier_LDADD = \
+	$(modules_secure_logging_tests_test_secure_logging_LDADD)
+
 endif
 
 EXTRA_DIST += modules/secure-logging/tests/CMakeLists.txt
-
