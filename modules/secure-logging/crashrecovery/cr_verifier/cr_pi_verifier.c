@@ -364,7 +364,6 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
     }
   char szBuffer[256]; //-- general purpose string buffer for log, timestamp etc
   memset(szBuffer, 0, sizeof(szBuffer));
-
   //(void) fprintf(ctx->protocolFile, "Enter cr_verifySingleLogFile\n");
   (void) fprintf(ctx->protocolFile, "%s", "Enter cr_verifySingleLogFile\n");
 
@@ -378,6 +377,33 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
   GArray *garr_Tau = NULL;
   GPtrArray *gpa_c = NULL;
   struct cr_BMatrixType *Mat = NULL;
+
+
+  /* Verify capacity against maxlogs (-m / ctx.n) parameter */
+  gsize detected_n = 0;
+  if(get_plain_log_lines_from_cr_logger_enc(ctx->inEncFilePath, LOG_LEN, THE_C, &detected_n))
+    {
+      msg_info("Inspected encrypted log capacity",
+              evt_tag_long("detected_n", (glong)detected_n),
+              evt_tag_int("configured_n", ctx->n));
+
+      (void) fprintf(ctx->protocolFile,
+                    "Inspected encrypted log capacity: detected_n: %ld, configured_n: %d\n",
+                    (glong)detected_n,
+                    ctx->n);
+
+      if (detected_n < (gsize)ctx->n)
+        {
+          msg_warning("Configured maxlogs (-m) is larger than detected file capacity!",
+                      evt_tag_int("maxlogs", ctx->n),
+                      evt_tag_long("detected", (glong)detected_n));
+        }
+
+        (void) fprintf(ctx->protocolFile,
+                       "Configured maxlogs (-m): %d, detected file capacity: %ld\n",
+                       ctx->n,
+                       (glong)detected_n);
+    }
 
   //-- encrypted input file
   FILE *logFileEnc; //-- std::ifstream logFile(path, std::ios::binary); // this is our log file :*
@@ -606,6 +632,18 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
       //      continue; // NEXT
       //    }
       gboolean is_found = g_hash_table_contains(ght_KeyStore, tau_i.ID);
+      g_print("ID lookup: file_index=%d found=%d", i, (int)is_found);
+      if (TRUE == is_found)
+        {
+          const cr_KeyStoreEntry *debug_kse =
+            g_hash_table_lookup(ght_KeyStore, tau_i.ID);
+
+          if (NULL != debug_kse)
+            {
+              g_print(" key_index=%d lj=%d", debug_kse->i, debug_kse->lj);
+            }
+        }
+      g_print("\n");
       if (FALSE == is_found)
         {
           // dbg_hexdump((unsigned char*) "tau_i.ID not found in ght_KeyStore", tau_i.ID, ID_LEN);
@@ -704,11 +742,11 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
               }
             }
 
-          cr_Tau_i tau_lj = g_array_index(garr_Tau, cr_Tau_i, lj);
+          cr_Tau_i *p_tau_lj = &g_array_index(garr_Tau, cr_Tau_i, lj);
           //-- Node: The returned tau_lj might be empty, if so, kse has to be created!
           // gboolean is_empty_tau_lj = is_equal_nullvector(tau_lj.ID, sizeof(cr_ID_TYPE), TRUE);
           //-- in c++ a new empty entry is generated when accessing none existing map entry!  KeyStoreEntry kse = KeyStore[Tau[lj].ID];
-          cr_KeyStoreEntry *p_kse = g_hash_table_lookup(ght_KeyStore, tau_lj.ID);
+          cr_KeyStoreEntry *p_kse = g_hash_table_lookup(ght_KeyStore, p_tau_lj->ID);
           if (NULL == p_kse)
             {
               msg_warning("Log entry references unknown key ID", 
@@ -720,7 +758,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
               // above cr_KeyStoreEntry kse_temp_not_in_KeyStore;
               memset(&kse_temp_not_in_KeyStore, 0, sizeof(cr_KeyStoreEntry));
               p_kse = &kse_temp_not_in_KeyStore;
-              cr_set_result(&res, 0, FALSE);
+              //cr_set_result(&res, 0, FALSE);
               //-- DO NOT exit here. Can happen when tampered.
               (void) fprintf(ctx->protocolFile, "WARNING: ID which should not exist! Tampered log file? i: %d, j: %d\n", i, j);
             }
@@ -735,7 +773,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
           //        exit(EXIT_FAILURE);
           //    }
 
-          if (0 == cr_CreateIntegrityTag(p_kse->Ki.TagKey, tau_lj.XOR, _TAG))
+          if (0 == cr_CreateIntegrityTag(p_kse->Ki.TagKey, p_tau_lj->XOR, _TAG))
             {
               msg_error("Failed to create integrity tag", 
                         evt_tag_int("iteration", i), 
@@ -755,7 +793,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
           //}
 
           gboolean is_equal_TAG = FALSE;
-          if (0 == memcmp(_TAG, tau_lj.TAG, sizeof(cr_TAG_TYPE)))
+          if (0 == memcmp(_TAG, p_tau_lj->TAG, sizeof(cr_TAG_TYPE)))
             {
               is_equal_TAG = TRUE;
             }
@@ -772,7 +810,7 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
           //      cout << "Line '" << lj << "' has been tampered." << endl;
           //   }
 
-          if (FALSE == is_equal_nullvector(tau_lj.XOR, sizeof(cr_XOR_TYPE), TRUE))
+          if (FALSE == is_equal_nullvector(p_tau_lj->XOR, sizeof(cr_XOR_TYPE), TRUE))
             {
               // fixed, old: g_print
               msg_warning("Log line has been tampered", 
@@ -784,9 +822,10 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
           // null the tampered vector.
           // line 21
           //-- std::fill(Tau[lj].XOR.begin(), Tau[lj].XOR.end(), 0);
-          memset(tau_lj.XOR, 0, sizeof(cr_XOR_TYPE));
+          //memset(tau_lj.XOR, 0, sizeof(cr_XOR_TYPE));
           // set basic tampering indicator
-          cr_set_result(&res, 0, FALSE);
+          //cr_set_result(&res, 0, FALSE);
+          memset(p_tau_lj->XOR, 0, sizeof(cr_XOR_TYPE));
 
         } //-- for line 18
     } //-- for line 16

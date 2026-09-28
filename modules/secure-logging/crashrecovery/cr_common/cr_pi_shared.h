@@ -146,5 +146,6 @@ void get_minutes_seconds_from_ms(int64_t milliseconds, int *minutes, int *second
 void get_human_timestamp(char szBuffer[256]);
 void get_filename_timestamp(char szBuffer[256]);
 
+
 #endif /* cr_pi_shared_h */
 

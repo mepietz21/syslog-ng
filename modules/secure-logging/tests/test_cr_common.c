@@ -1,6 +1,25 @@
 /*
- * Unit Tests for Secure Logging / Crash Recovery Module
- * Framework: Criterion
+ * Copyright (c) 2024 Gergo Ferenc Kovacs
+ * Copyright (c) 2026 Airbus Commercial Aircraft
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * As an additional exemption you are allowed to compile & link against the
+ * OpenSSL libraries as published by the OpenSSL project. See the file
+ * COPYING for details.
+ *
  */
 
 #include <criterion/criterion.h>
@@ -29,6 +48,7 @@ Test(crypto_core, prg128_context_and_generation)
     cr_assert_not_null(ctx, "PRG128 Context creation failed.");
     cr_assert_eq(ctx->counter, 0, "Initial counter must be 0.");
     cr_assert_arr_eq(ctx->seed, seed, 16, "Seed was not copied correctly.");
+    
 
     int res = cr_PRG128(ctx, buffer, sizeof(buffer));
     cr_assert_eq(res, 1, "cr_PRG128 execution failed.");

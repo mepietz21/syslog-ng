@@ -20,3 +20,19 @@ add_subdirectory(cr_common)
 add_subdirectory(cr_logger)
 add_subdirectory(cr_verifier)
 add_subdirectory(cr_destination)
+add_subdirectory(cr_tools)
+
+add_executable(cr_log_count
+    cr_tools/cr_log_count.c
+)
+
+target_include_directories(cr_log_count PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/crashrecovery/cr_common
+)
+
+target_link_libraries(cr_log_count PRIVATE
+    cr_common_lib
+    ${GLIB_LIBRARIES}
+)
+
+install(TARGETS cr_log_count DESTINATION bin)

@@ -463,4 +463,3 @@ void get_filename_timestamp(char szBuffer[256])
   const struct tm *local_time = localtime(&seconds);
   strftime(szBuffer, 256, "%Y-%m-%dT%H%M%S", local_time);
 }
-
