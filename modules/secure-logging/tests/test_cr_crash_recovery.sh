@@ -42,13 +42,16 @@ find_bin() {
 }
 
 CR_LOGGER="$(find_bin cr_logger)"
-CR_DELETE="$(find_bin cr_delete_entry)"
+#CR_DELETE="$(find_bin cr_delete_entry)"
+CR_CORRUPT="$(find_bin cr_corrupt_entry)"
 CR_VERIFIER="$(find_bin cr_verifier)"
 
-if [ -z "$CR_LOGGER" ] || [ -z "$CR_DELETE" ] || [ -z "$CR_VERIFIER" ]; then
+#if [ -z "$CR_LOGGER" ] || [ -z "$CR_DELETE" ] || [ -z "$CR_VERIFIER" ]; then
+if [ -z "$CR_LOGGER" ] || [ -z "$CR_CORRUPT" ] || [ -z "$CR_VERIFIER" ]; then
     echo "FEHLER: Eine oder mehrere Binärdateien wurden nicht gefunden!" >&2
     echo "  cr_logger:       '${CR_LOGGER:-NICHT GEFUNDEN}'" >&2
-    echo "  cr_delete_entry: '${CR_DELETE:-NICHT GEFUNDEN}'" >&2
+    #echo "  cr_delete_entry: '${CR_DELETE:-NICHT GEFUNDEN}'" >&2
+    echo "  cr_corrupt_entry: '${CR_CORRUPT:-NICHT GEFUNDEN}'" >&2
     echo "  cr_verifier:     '${CR_VERIFIER:-NICHT GEFUNDEN}'" >&2
     exit 1
 fi
@@ -76,12 +79,29 @@ echo "[TEST 1] Verschlüssele Logs via cr_logger..."
 
 echo "[TEST 1] Simuliere Crash: Nulle $ZERO_COUNT zufällige Blöcke in-place (-z)..."
 INDICES=$(shuf -i 0-$((MAXLOGS - 1)) -n $ZERO_COUNT)
+ORIGINAL_SIZE=$(stat -c %s "$ENC_LOG")
+
+
 for idx in $INDICES; do
-    "$CR_DELETE" -i "$ENC_LOG" -e "$idx" -z
+    dd if=/dev/zero of="$ENC_LOG" bs=2112 seek="$idx" count=1 conv=notrunc status=none
+    #"$CR_CORRUPT" --in "$ENC_LOG" --entry "$idx"
 done
 
+CURRENT_SIZE=$(stat -c %s "$ENC_LOG")
+if ["$CURRENT_SIZE" -ne "$ORIGINAL_SIZE"]; then
+    echo "FEHLER: Die Größe der verschlüsselten Datei hat sich nach dem Nulling geändert!" >&2
+    exit 1
+fi
+
 echo "[TEST 1] Führe cr_verifier aus..."
-"$CR_VERIFIER" -k "$MASTER_KEY" -i "$ENC_LOG" -o "$DECRYPTED_LOG" -m $MAXLOGS
+#"$CR_VERIFIER" -k "$MASTER_KEY" -i "$ENC_LOG" -o "$DECRYPTED_LOG" -m $MAXLOGS
+if "$CR_VERIFIER" -k "$MASTER_KEY" -i "$ENC_LOG" -o "$DECRYPTED_LOG" -m $MAXLOGS; then
+   VERIFIER_RC=0
+else
+    VERIFIER_RC=$?
+fi
+
+echo "[TEST 1] Prüfe Rückgabewert von cr_verifier: $VERIFIER_RC"
 
 echo "[TEST 1] Prüfe Wiederherstellung..."
 if diff -u "$PLAIN_LOG" "$DECRYPTED_LOG" > /dev/null; then

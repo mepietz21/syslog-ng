@@ -220,7 +220,6 @@ gboolean cr_AddLogEntry(cr_PIContext *ctx, const unsigned char *logMessage, size
       return FALSE; //-- ERROR
     }
 
-  // cipherLogMessage = malloc(MESSAGE_LEN_SLOGCR + IV_SIZE + MAC_LEN);
   // line 1
   if (0 == cr_encryptLog(encKey, logMessage, logMessageSize, cipherLogMessage))
     {

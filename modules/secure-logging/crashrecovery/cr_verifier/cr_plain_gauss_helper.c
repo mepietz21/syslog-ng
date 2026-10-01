@@ -682,7 +682,7 @@ int cr_pgh_RankOf(struct cr_BMatrixType *Mat)
           Mat->buckets);
   for (int r = Mat->rows - 1; r >= 0; --r)
     {
-      for (int c = Mat->colsInBits - 1; c >= r; --c)
+      for (int c = 0; c < Mat->colsInBits; ++c)
         {
           if (TRUE == cr_BMatrix_operator_bracket(Mat, r, c)) //-- if is bit
             {

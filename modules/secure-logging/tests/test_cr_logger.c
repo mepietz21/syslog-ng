@@ -27,18 +27,23 @@
 #include <glib.h>
 #include <glib/gstdio.h>
 #include <stdio.h>
+#include <sys/stat.h>
 #include <string.h>
 #include <unistd.h>
 #include "cr_pi_shared.h"
 #include "cr_crypto.h"
 #include "cr_pi_logger_context.h"
 #include "cr_pi_logger.h"
-/* Helper function to generate a dummy master key file */
+/* Generate a format-valid, non-uniform key for isolated logger tests. */
 static void create_dummy_key_file(const char *path)
 {
-    guchar dummy_key[KEY_SIZE];
-    memset(dummy_key, 0x42, KEY_SIZE);
-    gboolean res = cr_write_key(path, dummy_key);
+    const guchar test_key[KEY_SIZE] = {
+        0x10, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+        0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78,
+        0x90, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00,
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88
+    };
+    gboolean res = cr_write_key(path, (guchar *)test_key);
     cr_assert_eq(res, TRUE, "Failed to create dummy master key file");
     }
 /*
@@ -50,7 +55,10 @@ static void create_dummy_key_file(const char *path)
 === */
 Test(cr_logger_keys, read_write_key_roundtrip)
 {
-    gchar *temp_key_path = g_build_filename(g_get_tmp_dir(), "test_cr_rw.key", NULL);
+    gchar *temp_key_path = NULL;
+    gint temp_fd = g_file_open_tmp("test_cr_rw_XXXXXX.key", &temp_key_path, NULL);
+    cr_assert_neq(temp_fd, -1, "Could not create temporary key file");
+    close(temp_fd);
     guchar write_key[KEY_SIZE];
     guchar read_key[KEY_SIZE];
     memset(write_key, 0xAB, KEY_SIZE);
@@ -83,14 +91,22 @@ Test(cr_logger_keys, read_nonexistent_key)
 === */
 Test(cr_logger_encrypt, encrypt_log_message_length)
 {
-    guchar key[KEY_SIZE] = "01234567890123456789012345678901";
-    const unsigned char *msg = (const unsigned char *)"Test syslog message line";
+    guchar key[KEY_SIZE] = {
+        0x10, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+        0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78,
+        0x90, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00,
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88
+    };
+    const unsigned char *msg = (const unsigned char *)
+                               "<134>2026-10-01T12:34:56Z host app[42]: Test syslog message line";
     size_t msg_len = strlen((const char *)msg);
     unsigned char cipherLogMessage[IV_SIZE + MESSAGE_LEN_SLOGCR + MAC_LEN];
     memset(cipherLogMessage, 0, sizeof(cipherLogMessage));
     int cipher_len = cr_encryptLog(key, msg, msg_len, cipherLogMessage);
     int expected_len = IV_SIZE + MESSAGE_LEN_SLOGCR + MAC_LEN;
     cr_assert_eq(cipher_len, expected_len, "cr_encryptLog returned length %d, expected %d", cipher_len, expected_len);
+    cr_assert_arr_neq(cipherLogMessage, msg, MIN(msg_len, (size_t)expected_len),
+                      "Encrypted message must not equal plaintext.");
 
 }
 /*
@@ -111,7 +127,7 @@ Test(cr_logger_lifecycle, pi_context_creation_and_add_log)
     /* 1. Create initial master key */
     create_dummy_key_file(master_key_path);
     /* 2. Setup Logger Context (maxLogs = 6, which is > THE_K = 5) */
-    cr_pi_logger_context loggerCtx;
+    cr_pi_logger_context loggerCtx = {0};
     loggerCtx.p_MasterKeyPath = master_key_path;
     loggerCtx.p_OutputDirectoryPath = tmp_dir;
     loggerCtx.p_InputPlainLogPath = NULL;
@@ -124,12 +140,20 @@ Test(cr_logger_lifecycle, pi_context_creation_and_add_log)
     cr_assert_eq(init_res, TRUE, "init_cr_logger_functionality failed");
     cr_assert_not_null(ctx, "ctx should be initialized");
     /* 4. Add Log Entries */
-    const unsigned char *log1 = (const unsigned char *)"Test Log Line 1";
+    const unsigned char *log1 = (const unsigned char *)
+                                "<134>2026-10-01T12:34:56Z host app[42]: Test Log Line 1";
     gboolean add_res1 = cr_AddLogEntry(ctx, log1, strlen((const char *)log1));
     cr_assert_eq(add_res1, TRUE, "cr_AddLogEntry failed on first log");
-    const unsigned char *log2 = (const unsigned char *)"Test Log Line 2";
+    const unsigned char *log2 = (const unsigned char *)
+                                "<134>2026-10-01T12:34:57Z host app[42]: Umlaut: Gr\303\274\303\237e";
     gboolean add_res2 = cr_AddLogEntry(ctx, log2, strlen((const char *)log2));
     cr_assert_eq(add_res2, TRUE, "cr_AddLogEntry failed on second log");
+    struct stat log_stat = {0};
+    cr_assert_eq(fstat(fileno(ctx->logFile), &log_stat), 0);
+    cr_assert_geq(log_stat.st_size, (off_t)(2 * LOG_LEN));
+    cr_assert_eq(log_stat.st_size % LOG_LEN, 0, "Log file must contain complete fixed-size entries");
+
+    gchar *session_key_path = g_strdup(ctx->keyPath);
     /* 5. Clean up */
     if (ctx->logFile) fclose(ctx->logFile);
     if (ctx->keyFile) fclose(ctx->keyFile);
@@ -137,6 +161,8 @@ Test(cr_logger_lifecycle, pi_context_creation_and_add_log)
     g_free(ctx);
     g_free(prg);
 
+    g_unlink(session_key_path);
+    g_free(session_key_path);
     g_unlink(master_key_path);
     g_unlink(enc_log_path);
     g_rmdir(tmp_dir);
@@ -154,7 +180,10 @@ Test(cr_logger_lifecycle, pi_context_creation_and_add_log)
 Test(cr_logger_reader, read_and_sanitize_logs)
 {
     GError *error = NULL;
-    gchar *tmp_file_path = g_build_filename(g_get_tmp_dir(), "test_plain_input.txt", NULL);
+    gchar *tmp_file_path = NULL;
+    gint temp_fd = g_file_open_tmp("test_plain_input_XXXXXX.txt", &tmp_file_path, &error);
+    cr_assert_neq(temp_fd, -1, "Failed to create input log file: %s", error ? error->message : "unknown error");
+    close(temp_fd);
     /* Prepare a file containing 1 valid UTF-8 line and 1 line with an invalid byte 0xFF */
     FILE *f = fopen(tmp_file_path, "wb");
     cr_assert_not_null(f, "Failed to create input log file");

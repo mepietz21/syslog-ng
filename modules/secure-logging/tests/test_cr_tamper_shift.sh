@@ -84,9 +84,9 @@ echo "[TEST 2] Führe cr_verifier aus (Erwartet: Fehler/Abbruch)..."
 
 VERIFIER_LOG="$TMP_DIR/verifier.log"
 if "$CR_VERIFIER" -k "$MASTER_KEY" -i "$ENC_LOG" -o "$DECRYPTED_LOG" -m "$MAXLOGS" >"$VERIFIER_LOG" 2>&1; then
-    Verifier_RC=0
+    VERIFIER_RC=0
 else
-    Verifier_RC=$?
+    VERIFIER_RC=$?
 fi
 
 

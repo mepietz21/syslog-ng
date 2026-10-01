@@ -950,69 +950,47 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
   g_print("-- GAUSS -----\n");
   get_human_timestamp(szBuffer);
   g_print("%s\n", szBuffer);
-  // GPtrArray *gpa_c = NULL;
 
-  //-- std::vector<PI::XOR_TYPE> c;
-  // choose metal or CPU:
-  if (ctx->useMetal)
-    {
-      msg_warning("Metal is not supported; using CPU implementation");
-      //-- ignore wrongly set flag
-    }
-
-
-  //-- auto t1 = high_resolution_clock::now();
-  // solve gauss, and get the cipher text vector c
-
-  // line 27 Verify, == line 22 listitems
-  //--  c = PlainGaussHelper::Solve(M, v, false);
   gboolean debug = FALSE;
-  gpa_c = cr_pgh_Solve(Mat, gpa_v, debug, ctx); //-- add ctx for protocol log
+  gpa_c = cr_pgh_Solve(Mat, gpa_v, debug, ctx);
   get_human_timestamp(szBuffer);
   g_print("%s\n", szBuffer);
 
-  //-- auto t2 = high_resolution_clock::now();
-  //--          duration<long, std::nano> ns_double = t2 - t1;
-  //--       cout << "Gaussian Elimination (CPU): " << ns_double.count() << " ns." << endl;
-  //--    std::ofstream resultLogFile(resultPath, std::ios::app);
-  //   // Check if the file is successfully opened
-  //   if (!resultLogFile.is_open()) {
-  //       std::cerr << "ERROR: opening the result file!" << std::endl;
-  //       exit(EXIT_FAILURE);
-  //   }
+  /* 1. PRÜFUNG: Hat die Matrix nach Gauß noch vollen Rang? */
+  int detected_rank = cr_pgh_RankOf(Mat);
+  if (detected_rank < Mat->colsInBits)
+    {
+      msg_error("Verification failed: Matrix rank insufficient for recovery",
+                evt_tag_int("detected_rank", detected_rank),
+                evt_tag_int("required_rank", Mat->colsInBits));
+      (void) fprintf(ctx->protocolFile,
+                     "ERROR: Matrix rank deficit (%d < %d). Too many lost/tampered blocks!\n",
+                     detected_rank, Mat->colsInBits);
+      cr_set_result(&res, 0, FALSE);
+      goto LABEL_CLEANUP;
+    }
 
-  // above FILE *resultLogFile;
   g_print("ctx.outFile: %s\n", ctx->outPlainFilePath);
   resultLogFile = fopen(ctx->outPlainFilePath, "w");
   if (NULL == resultLogFile)
     {
-      msg_error("Failed to create output log file", 
+      msg_error("Failed to create output log file",
                 evt_tag_str("path", ctx->outPlainFilePath));
       cr_set_result(&res, 0, FALSE);
       (void) fprintf(ctx->protocolFile, "ERROR: Failed to create output file %s\n", ctx->outPlainFilePath);
       goto LABEL_CLEANUP;
     }
 
-  // decrypt the log files, and check the MACs.
-  // line 27
-  gboolean is_show_decrypted = FALSE; //-- verbose terminal output
+  // Decrypt log files and verify MACs
+  gboolean is_show_decrypted = FALSE;
   g_print("line 27, rank: %d\n", rank);
   g_print("gpa_c->len: %d\n", gpa_c->len);
   for (int i = 0; i < rank; ++i)
     {
-      //g_print("\n-- Before cr_decryptLog, i: %d ---\n", i);
-      // decrypt the log message
-      //line 29
-      //-- string log = decryptLog(keys[i].EncKey, c[i]);
       cr_Keys keys_i = g_array_index(garr_keys, cr_Keys, i);
-      cr_XOR_TYPE *p_xor_i  = g_ptr_array_index(gpa_c, i);
+      cr_XOR_TYPE *p_xor_i = g_ptr_array_index(gpa_c, i);
 
-      //-- DECRYPT
       GString *gslog = cr_decryptLog(keys_i.EncKey, *p_xor_i);
-
-      //-- add extra \n for better readablility in terminal. gslog->str should
-      //   already contain a '\n' due the logger does not remove it.
-      //glong cnt_of_char = g_utf8_strlen(gslog->str, -1);
 
       if (TRUE == is_show_decrypted)
         {
@@ -1021,32 +999,31 @@ cr_Result cr_verifySingleLogFile(cr_VerifierContext *ctx)
         }
       else
         {
-          if ( (0 == (i & 511)) || (i + 1 == rank))
+          if ((0 == (i & 511)) || (i + 1 == rank))
             g_print("\x1b[2K\r   decrypted log line %d of %d\n", i + 1, rank);
         }
 
-
-      // check wether the log message has been tampered.
-      // line 30
-      //
-
-      //--  if (log == "") {
-      //       continue;
-      //    }
+      /* 2. PRÜFUNG: Wenn MAC/Entschlüsselung fehlschlägt (gslog->len == 0) */
       if (0 == gslog->len)
         {
-          g_print("gslog->len == 0, empty string, i: %d, line 27/30\n", i);
-          continue;
+          msg_error("Log entry decryption or MAC check failed",
+                    evt_tag_int("entry_index", i));
+          (void) fprintf(ctx->protocolFile, "ERROR: Failed to decrypt/verify log line %d!\n", i);
+         
+          /* Setze Fehlerergebnis und brich ab */
+          cr_set_result(&res, 0, FALSE);
+          g_string_free(gslog, TRUE);
+          goto LABEL_CLEANUP;
         }
 
-      // write the log into the desired file.
-      //-- resultLogFile << log << endl;
+      // Write valid log into output file
       fprintf(resultLogFile, "%s", gslog->str);
 
       g_string_free(gslog, TRUE);
       gslog = NULL;
 
-    } // for i line 27
+    } 
+    
   g_print("\n");
   get_human_timestamp(szBuffer);
   g_print("%s\n", szBuffer);

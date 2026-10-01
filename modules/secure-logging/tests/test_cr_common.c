@@ -65,45 +65,54 @@ Test(crypto_core, aes256_ctr_encrypt_decrypt)
 {
     guchar key[KEY_SIZE] = "01234567890123456789012345678901";
     guchar iv[IV_SIZE]   = "1234567890123456";
-    const char *plaintext = "Syslog-ng Secure Logging Crash Recovery Test Payload";
-    gint plain_len = (gint)strlen(plaintext) + 1;
+    guchar plaintext[32] = "syslog-ng crash recovery test";
+    gint plain_len = sizeof(plaintext);
 
     guchar ciphertext[256] = {0};
     guchar decrypted[256]  = {0};
 
     /* Encrypt */
-    int enc_res = cr_AES_256_CTR_encrypt((guchar *)plaintext, plain_len, key, iv, ciphertext);
+    int enc_res = cr_AES_256_CTR_encrypt(plaintext, plain_len, key, iv, ciphertext);
     cr_assert_eq(enc_res, plain_len, "AES-256-CTR Encryption failed.");
-    cr_assert_arr_neq(ciphertext, (guchar *)plaintext, plain_len, "Ciphertext matches plaintext!");
+    cr_assert_arr_neq(ciphertext, plaintext, plain_len, "Ciphertext matches plaintext!");
 
     /* Decrypt */
     int dec_len = cr_AES_256_CTR_decrypt(ciphertext, plain_len, key, iv, decrypted);
     cr_assert_eq(dec_len, plain_len, "AES-256-CTR Decryption returned invalid length.");
-    cr_assert_str_eq((char *)decrypted, plaintext, "Decrypted text does not match original plaintext.");
+    cr_assert_arr_eq(decrypted, plaintext, plain_len, "Decrypted text does not match original plaintext.");
 }
 
 Test(crypto_core, cmac_and_prf)
 {
     guchar key[KEY_SIZE] = "SecretMasterKeyForSecureLogging!";
-    guchar input[] = "LogMessagePayload";
-    gsize input_size = sizeof(input);
-    guchar output[16] = {0};
+    guchar input[] = "<134>2026-10-01T12:34:56Z host app: LogMessagePayload";
+    gsize input_size = strlen((char *)input);
+    guchar output[CMAC_LEN] = {0};
     gsize output_len = 0;
 
     /* Test CMAC */
     int cmac_res = cr_CMAC(key, input, input_size, output, &output_len, sizeof(output));
     cr_assert_eq(cmac_res, 1, "cr_CMAC failed.");
-    cr_assert_gt(output_len, 0, "CMAC output length must be > 0.");
+    cr_assert_eq(output_len, CMAC_LEN, "CMAC output length must equal CMAC_LEN.");
 
     /* Test PRF */
     guchar prf_output[32] = {0};
+    guchar repeated_prf_output[32] = {0};
     int prf_res = cr_PRF(input, input_size, key, prf_output, sizeof(prf_output));
     cr_assert_eq(prf_res, 1, "cr_PRF failed.");
+    cr_assert_eq(cr_PRF(input, input_size, key, repeated_prf_output, sizeof(repeated_prf_output)), 1);
+    cr_assert_arr_eq(prf_output, repeated_prf_output, sizeof(prf_output),
+                     "PRF must be deterministic for the same input and key.");
 }
 
 Test(crypto_core, subkey_derivation)
 {
-    guchar master[KEY_SIZE] = "MasterSessionKey32BytesLong12345";
+    guchar master[KEY_SIZE] = {
+        0x10, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+        0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78,
+        0x90, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00,
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88
+    };
     guchar encKey[KEY_SIZE] = {0};
     guchar drnKey[KEY_SIZE] = {0};
     guchar tagKey[KEY_SIZE] = {0};
@@ -118,6 +127,17 @@ Test(crypto_core, subkey_derivation)
     cr_assert_arr_neq(drnKey, encKey, KEY_SIZE);
     cr_assert_arr_neq(tagKey, drnKey, KEY_SIZE);
     cr_assert_arr_neq(idKey, tagKey, KEY_SIZE);
+
+    guchar repeatedEncKey[KEY_SIZE] = {0};
+    guchar repeatedDrnKey[KEY_SIZE] = {0};
+    guchar repeatedTagKey[KEY_SIZE] = {0};
+    guchar repeatedIdKey[KEY_SIZE] = {0};
+    cr_assert_eq(cr_DeriveSubKeys(master, repeatedEncKey, repeatedDrnKey,
+                                  repeatedTagKey, repeatedIdKey), 1);
+    cr_assert_arr_eq(encKey, repeatedEncKey, KEY_SIZE);
+    cr_assert_arr_eq(drnKey, repeatedDrnKey, KEY_SIZE);
+    cr_assert_arr_eq(tagKey, repeatedTagKey, KEY_SIZE);
+    cr_assert_arr_eq(idKey, repeatedIdKey, KEY_SIZE);
 }
 
 /* =========================================================================
@@ -126,7 +146,12 @@ Test(crypto_core, subkey_derivation)
 
 Test(random_gen, uniform_random_int_bounds)
 {
-    guchar seed[KEY_SIZE] = "RandomSeedKey32BytesLongValue!!";
+    guchar seed[KEY_SIZE] = {
+        0x54, 0x65, 0x73, 0x74, 0x4d, 0x61, 0x73, 0x74,
+        0x65, 0x72, 0x4b, 0x65, 0x79, 0x2d, 0x32, 0x30,
+        0x32, 0x36, 0x2d, 0x63, 0x72, 0x61, 0x73, 0x68,
+        0x2d, 0x72, 0x65, 0x63, 0x6f, 0x76, 0x65, 0x72
+    };
     cr_PRGContext *ctx = cr_CreatePRGContext(seed);
     cr_assert_not_null(ctx);
 
@@ -155,7 +180,7 @@ Test(random_gen, distinct_random_ez)
     /* Check uniqueness and bounds */
     for (gint i = 0; i < k; ++i)
     {
-        cr_assert_leq(random_array[i], range, "Random element out of range.");
+        cr_assert_lt(random_array[i], range, "Random element out of range.");
         for (gint j = i + 1; j < k; ++j)
         {
             cr_assert_neq(random_array[i], random_array[j], "Duplicate value found in distinct random array.");

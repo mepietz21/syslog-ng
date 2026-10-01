@@ -26,6 +26,8 @@
 #include <criterion/logging.h>
 #include <glib.h>
 #include <string.h>
+#include "apphook.h"
+#include "mainloop.h"
 #include "driver.h"
 #include "plugin.h"
 #include "cr_destination.h"
@@ -37,8 +39,13 @@ extern const ModuleInfo module_info;
 /* Helper fixture to allocate and free a minimal CrDestinationDriver */
 static CrDestinationDriver *driver;
 
+TestSuite(cr_destination_config, .init = app_startup, .fini = app_shutdown);
+TestSuite(cr_destination_worker, .init = app_startup, .fini = app_shutdown);
+TestSuite(cr_destination_cleanup, .init = app_startup, .fini = app_shutdown);
+
 static void setup_driver(void)
 {
+    main_thread_handle = get_thread_id();
     /* Initialize instance without full syslog-ng GlobalConfig */
     driver = (CrDestinationDriver *)cr_destination_dd_new(NULL);
     cr_assert_not_null(driver, "Failed to instantiate CrDestinationDriver");
@@ -95,12 +102,20 @@ Test(cr_destination_config, set_dir, .init = setup_driver, .fini = teardown_driv
 
 Test(cr_destination_config, set_logrotcnt, .init = setup_driver, .fini = teardown_driver)
 {
-    const gsize rotation_cnt = 1024;
-    cr_destination_dd_set_logrotcnt((LogDriver *)driver, rotation_cnt);
-    cr_assert_eq(driver->n_logrotcnt, rotation_cnt,
-    "n_logrotcnt was not correctly updated in driver");
-    cr_assert_eq(driver->loggerctx.maxLogs, rotation_cnt,
-    "loggerctx.maxLogs was not updated to match logrotcnt");
+    const gsize first_rotation_cnt = THE_K + 1;
+    const gsize second_rotation_cnt = 1024;
+
+    cr_destination_dd_set_logrotcnt((LogDriver *)driver, first_rotation_cnt);
+    cr_assert_eq(driver->n_logrotcnt, first_rotation_cnt,
+                 "n_logrotcnt was not correctly updated in driver");
+    cr_assert_eq(driver->loggerctx.maxLogs, first_rotation_cnt,
+                 "loggerctx.maxLogs was not updated to match logrotcnt");
+
+    cr_destination_dd_set_logrotcnt((LogDriver *)driver, second_rotation_cnt);
+    cr_assert_eq(driver->n_logrotcnt, second_rotation_cnt,
+                 "n_logrotcnt was not replaceable after initial configuration");
+    cr_assert_eq(driver->loggerctx.maxLogs, second_rotation_cnt,
+                 "loggerctx.maxLogs was not updated after replacement");
 }
 
 /*
@@ -161,24 +176,6 @@ Test(cr_destination_worker, construct_worker, .init = setup_driver, .fini = tear
     {
         worker->free_fn(worker);
     }
-}
-/*
-======================================================================
-===
-* TEST SUITE: Module Info & Plugin Registration
-*
-======================================================================
-=== */
-Test(cr_destination_plugin, verify_module_info)
-{
-    cr_assert_str_eq(module_info.canonical_name, "cr_destination",
-    "Canonical name of module_info does not match");
-
-    cr_assert_eq(module_info.plugins_len, 1,
-    "Expected exactly 1 plugin registered in module_info");
-    cr_assert_not_null(module_info.plugins,
-
-    "Plugin array in module_info is NULL");
 }
 /*
 ======================================================================

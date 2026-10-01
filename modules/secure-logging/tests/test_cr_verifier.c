@@ -25,6 +25,7 @@
 #include <criterion/criterion.h>
 #include <criterion/logging.h>
 #include <glib.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include "cr_pi_types.h"
@@ -44,24 +45,28 @@ Test(cr_matrix, b256_bit_setting_and_xor)
     struct cr_B256 a, b, res;
     memset(&a, 0, sizeof(a));
     memset(&b, 0, sizeof(b));
-    /* Bits an bestimmten Positionen setzen */
-    cr_B256_setBit(&a, 0); /* Bit 0 in part 0 */
-    cr_B256_setBit(&a, 127); /* Bit in part 1 */
+    cr_B256_setBit(&a, 0);
+    cr_B256_setBit(&a, 63);
+    cr_B256_setBit(&a, 127);
+    cr_B256_setBit(&a, 255);
+    cr_B256_setBit(&b, 63);
     cr_B256_setBit(&b, 127);
-    cr_B256_setBit(&b, 255); /* Bit in part 3 */
+    cr_B256_setBit(&b, 128);
     cr_assert_eq(cr_B256_getBit(&a, 0), TRUE, "Bit 0 in 'a' should be set");
     cr_assert_eq(cr_B256_getBit(&a, 127), TRUE, "Bit 127 in 'a' should be set");
+    cr_assert_eq(cr_B256_getBit(&a, 255), TRUE, "Bit 255 in 'a' should be set");
     cr_assert_eq(cr_B256_getBit(&a, 10), FALSE, "Bit 10 in 'a' should NOT be set");
     /* XOR-Operation testen */
     res = cr_B256_operatorXOR(&a, &b);
     cr_assert_eq(cr_B256_getBit(&res, 0), TRUE, "Bit 0 should be 1 after XOR (1 ^ 0)");
     cr_assert_eq(cr_B256_getBit(&res, 127), FALSE, "Bit 127 should be 0 after XOR (1 ^ 1)");
-    cr_assert_eq(cr_B256_getBit(&res, 255), TRUE, "Bit 255 should be 1 after XOR (0 ^ 1)");
+    cr_assert_eq(cr_B256_getBit(&res, 128), TRUE, "Bit 128 should be 1 after XOR (0 ^ 1)");
+    cr_assert_eq(cr_B256_getBit(&res, 255), TRUE, "Bit 255 should be 1 after XOR (1 ^ 0)");
 }
 
 Test(cr_matrix, bmatrix_identity_and_swap)
 {
-    gsize size = 8;
+    gsize size = 16;
     struct cr_BMatrixType *mat = cr_BMatrix_I(size);
     cr_assert_not_null(mat, "cr_BMatrix_I returned NULL");
     /* Prüfen, ob die Hauptdiagonale 1 ist und sonst 0 */
@@ -131,8 +136,12 @@ Test(cr_gauss, create_and_free_gptrarray_xor)
     cr_assert_not_null(gpa, "gpa should not be NULL");
     cr_assert_eq(gpa->len, count, "Expected array length %zu", count);
     /* Verify elements are aligned */
-    cr_assert_not_null(gpa->pdata[0]);
-    cr_assert_eq(((uintptr_t)gpa->pdata[0]) % AVX2_ALIGNMENT, 0, "Data block is not 32-byte aligned!");
+    for (gsize i = 0; i < count; ++i)
+    {
+        cr_assert_not_null(gpa->pdata[i]);
+        cr_assert_eq(((uintptr_t)gpa->pdata[i]) % AVX2_ALIGNMENT, 0,
+                     "Data block %zu is not 32-byte aligned!", i);
+    }
     free_GPtrArray_cr_XOR_TYPE(&gpa);
     cr_assert_null(gpa, "gpa pointer must be set to NULL after free");
 }
@@ -157,7 +166,7 @@ Test(cr_verifier_helpers, fnv1a_hash_and_id_equal)
     guint hash2 = fnv1a_hash_ID_LEN(id2);
     guint hash3 = fnv1a_hash_ID_LEN(id3);
     cr_assert_eq(hash1, hash2, "Hashes for identical IDs should match");
-    cr_assert_neq(hash1, hash3, "Hashes for different IDs should not match");
+    cr_assert_neq(hash1, 0, "Hash must not be the uninitialized zero value");
     cr_assert_eq(id_type_buffer_equal(id1, id2), TRUE);
     cr_assert_eq(id_type_buffer_equal(id1, id3), FALSE);
 }

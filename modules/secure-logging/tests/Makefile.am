@@ -10,9 +10,11 @@ modules_secure_logging_tests_TESTS = \
 	modules/secure-logging/tests/test_cr_logger \
 	modules/secure-logging/tests/test_cr_verifier
 
-# 2. Hilfswerkzeuge und Tests zu check_PROGRAMS hinzufügen
+# 2. Unit-Tests zu check_PROGRAMS hinzufügen; Hilfswerkzeuge nur bauen.
 check_PROGRAMS += \
-	${modules_secure_logging_tests_TESTS} \
+	${modules_secure_logging_tests_TESTS}
+
+noinst_PROGRAMS += \
 	modules/secure-logging/tests/cr_delete_entry \
 	modules/secure-logging/tests/cr_corrupt_entry
 
@@ -86,7 +88,8 @@ modules_secure_logging_tests_test_cr_destination_CFLAGS = \
 	$(modules_secure_logging_tests_test_secure_logging_CFLAGS)
 
 modules_secure_logging_tests_test_cr_destination_LDADD = \
-	$(modules_secure_logging_tests_test_secure_logging_LDADD)
+	$(modules_secure_logging_tests_test_secure_logging_LDADD) \
+	modules/secure-logging/crashrecovery/cr_destination/libcr_destination.la
 
 modules_secure_logging_tests_test_cr_logger_CPPFLAGS = \
 	$(modules_secure_logging_tests_test_secure_logging_CPPFLAGS)
