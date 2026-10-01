@@ -4,6 +4,34 @@ For unit tests, the unit test framework Criterion is used.
 Secure-logging provides unit tests in file
 modules/secure-logging/tests/test_secure_logging.
 
+## Crash-recovery integration scenarios
+
+Run the standalone integration suite from any directory with:
+
+```
+modules/secure-logging/tests/run_all_cr_tests.sh
+```
+
+The suite currently covers:
+
+* recovery after four complete slot losses,
+* detection of a targeted delete-and-shift attack,
+* the implementation-specific redundancy boundary (`m = ceil(n * THE_C)`),
+* a bounded crash-window approximation with four lost slots, and
+* rejection of a wrong master key.
+
+`THE_K` is the number of random positions used per log entry. It is not the
+number of recoverable losses. The current implementation does not expose the
+paper's `lambda` dummy-entry parameter or cache-size parameter `cs`; therefore
+the crash-window tests are implementation-level approximations, not formal
+proofs of the SLiC model.
+
+`test_cr_partial_write.sh` is an expected-failure conformance test. It
+reproduces the current limitation that a partially written final slot can be
+reported as a complete reconstruction. The master runner labels this result
+`XFAIL`; it should become `XPASS` only after the verifier is changed and the
+test expectation is updated.
+
 
 # Criterion
 
