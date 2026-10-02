@@ -140,6 +140,71 @@ Test(crypto_core, subkey_derivation)
     cr_assert_arr_eq(idKey, repeatedIdKey, KEY_SIZE);
 }
 
+Test(crypto_core, key_evolution_changes_key_deterministically)
+{
+    guchar key[KEY_SIZE] = {
+        0x10, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+        0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78,
+        0x90, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00,
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88
+    };
+    guchar next_key[KEY_SIZE] = {0};
+    guchar repeated_key[KEY_SIZE] = {0};
+
+    cr_assert_eq(cr_KeyEvolution(key, next_key), 1);
+    cr_assert_eq(cr_KeyEvolution(key, repeated_key), 1);
+    cr_assert_arr_neq(next_key, key, KEY_SIZE, "Key evolution must change the key.");
+    cr_assert_arr_eq(next_key, repeated_key, KEY_SIZE,
+                     "Key evolution must be deterministic for the same starting key.");
+}
+
+Test(crypto_core, random_key_and_iv_generation)
+{
+    guchar master_key[KEY_SIZE] = {0};
+    guchar iv[IV_SIZE] = {0};
+    guchar zero_key[KEY_SIZE] = {0};
+    guchar zero_iv[IV_SIZE] = {0};
+
+    cr_assert_eq(cr_GenerateMasterKey(master_key), 1);
+    cr_assert_eq(cr_GenerateIV(iv), 1);
+    cr_assert_arr_neq(master_key, zero_key, KEY_SIZE);
+    cr_assert_arr_neq(iv, zero_iv, IV_SIZE);
+}
+
+Test(crypto_core, ids_and_integrity_tags_are_deterministic_and_bound_to_input)
+{
+    guchar key[KEY_SIZE] = {
+        0x10, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+        0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78,
+        0x90, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00,
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88
+    };
+    guchar id_a[ID_LEN] = {0};
+    guchar id_a_repeat[ID_LEN] = {0};
+    guchar id_b[ID_LEN] = {0};
+    guchar xor_data[CIPHERTEXT_LEN] = {0};
+    guchar changed_xor_data[CIPHERTEXT_LEN] = {0};
+    guchar tag_a[INTEGRITY_TAG_LEN] = {0};
+    guchar tag_a_repeat[INTEGRITY_TAG_LEN] = {0};
+    guchar tag_b[INTEGRITY_TAG_LEN] = {0};
+
+    xor_data[17] = 0x5a;
+    memcpy(changed_xor_data, xor_data, sizeof(xor_data));
+    changed_xor_data[17] ^= 0x01;
+
+    cr_assert_eq(cr_CreateID(key, 2, id_a), 1);
+    cr_assert_eq(cr_CreateID(key, 2, id_a_repeat), 1);
+    cr_assert_eq(cr_CreateID(key, 3, id_b), 1);
+    cr_assert_arr_eq(id_a, id_a_repeat, ID_LEN);
+    cr_assert_arr_neq(id_a, id_b, ID_LEN);
+
+    cr_assert_eq(cr_CreateIntegrityTag(key, xor_data, tag_a), 1);
+    cr_assert_eq(cr_CreateIntegrityTag(key, xor_data, tag_a_repeat), 1);
+    cr_assert_eq(cr_CreateIntegrityTag(key, changed_xor_data, tag_b), 1);
+    cr_assert_arr_eq(tag_a, tag_a_repeat, INTEGRITY_TAG_LEN);
+    cr_assert_arr_neq(tag_a, tag_b, INTEGRITY_TAG_LEN);
+}
+
 /* =========================================================================
  * TEST SUITE: Random Number Generators
  * ========================================================================= */
@@ -165,7 +230,37 @@ Test(random_gen, uniform_random_int_bounds)
         cr_assert_lt(val, upper_bound, "Random int exceeded upper bound!");
     }
 
+    cr_assert_eq(cr_UniformRandomInt(ctx, 1, &val), 0,
+                 "An upper bound below 2 must be rejected.");
+    cr_assert_eq(cr_UniformRandomInt(ctx, upper_bound, NULL), 0,
+                 "A NULL output pointer must be rejected.");
+
     g_free(ctx);
+}
+
+Test(random_gen, drn_returns_distinct_in_range_positions)
+{
+    guchar seed[KEY_SIZE] = {
+        0x54, 0x65, 0x73, 0x74, 0x4d, 0x61, 0x73, 0x74,
+        0x65, 0x72, 0x4b, 0x65, 0x79, 0x2d, 0x32, 0x30,
+        0x32, 0x36, 0x2d, 0x63, 0x72, 0x61, 0x73, 0x68,
+        0x2d, 0x72, 0x65, 0x63, 0x6f, 0x76, 0x65, 0x72
+    };
+    gint positions[THE_K] = {0};
+    const gint upper_bound = 32;
+
+    cr_assert_eq(cr_DRN(seed, THE_K, upper_bound, positions), 1);
+    for (gint i = 0; i < THE_K; ++i)
+    {
+        cr_assert_geq(positions[i], 0);
+        cr_assert_lt(positions[i], upper_bound);
+        for (gint j = i + 1; j < THE_K; ++j)
+        {
+            cr_assert_neq(positions[i], positions[j]);
+        }
+    }
+    cr_assert_eq(cr_DRN(seed, THE_K, THE_K - 1, positions), 0,
+                 "DRN must reject a range too small for distinct positions.");
 }
 
 Test(random_gen, distinct_random_ez)

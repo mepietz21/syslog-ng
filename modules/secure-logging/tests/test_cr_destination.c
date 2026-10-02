@@ -133,6 +133,10 @@ Test(cr_destination_config, set_mode_variants, .init = setup_driver, .fini = tea
     cr_assert_eq(driver->log_mode, CR_LOGMODE_DIRECT, "Expected CR_LOGMODE_DIRECT");
     cr_assert_str_eq(driver->gstr_mode->str, "direct");
 
+    cr_destination_dd_set_mode((LogDriver *)driver, "DIRECT");
+    cr_assert_eq(driver->log_mode, CR_LOGMODE_DIRECT, "Mode parsing should ignore ASCII case");
+    cr_assert_str_eq(driver->gstr_mode->str, "DIRECT");
+
     /* Test Mode: base64 */
     cr_destination_dd_set_mode((LogDriver *)driver, "base64");
     cr_assert_eq(driver->log_mode, CR_LOGMODE_BASE64, "Expected CR_LOGMODE_BASE64");
@@ -187,15 +191,28 @@ Test(cr_destination_worker, construct_worker, .init = setup_driver, .fini = tear
 Test(cr_destination_cleanup, free_logger_pi_contexts_safe_handling, .init = setup_driver,
 .fini = teardown_driver)
 {
-    /* Setup dummy paths inside loggerctx */
+    driver->loggerctx.p_OutputDirectoryPath = g_strdup("/tmp/test_slog");
+    driver->loggerctx.p_MasterKeyPath = g_strdup("/tmp/test_slog/master.key");
     driver->loggerctx.p_OutputEncLogPath = g_strdup("/tmp/test_part1.enc");
+    driver->p_pictx = g_new0(cr_PIContext, 1);
+    driver->p_pictx->keyPath = g_strdup("/tmp/test_slog/currentSession.key");
+    driver->p_pictx->logFile = tmpfile();
+    driver->p_pictx->keyFile = tmpfile();
+    cr_assert_not_null(driver->p_pictx->logFile);
+    cr_assert_not_null(driver->p_pictx->keyFile);
+    driver->p_prg = g_new0(cr_PRGContext, 1);
 
-    /* Call cleanup wrapper manually */
     cr_destination_dd_free_logger_pi_contexts(driver);
-    /* Assert pointers are reset to NULL and no crash occurs */
+    cr_assert_null(driver->loggerctx.p_OutputDirectoryPath);
+    cr_assert_null(driver->loggerctx.p_MasterKeyPath);
     cr_assert_null(driver->loggerctx.p_OutputEncLogPath,
     "p_OutputEncLogPath was not set to NULL after free");
     cr_assert_null(driver->p_pictx,
     "p_pictx was not set to NULL after free");
+    cr_assert_null(driver->p_prg, "Owned PRG context was not freed");
+}
 
+Test(cr_destination_cleanup, null_context_is_safe)
+{
+    cr_destination_dd_free_logger_pi_contexts(NULL);
 }

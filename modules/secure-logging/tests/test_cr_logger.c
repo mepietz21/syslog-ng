@@ -82,6 +82,24 @@ Test(cr_logger_keys, read_nonexistent_key)
     gboolean res = cr_read_key("/nonexistent_path/invalid_key.key", read_key);
     cr_assert_eq(res, FALSE, "cr_read_key should fail on nonexistent file");
 }
+
+Test(cr_logger_keys, reject_key_file_shorter_than_key_size)
+{
+    gchar *key_path = NULL;
+    GError *error = NULL;
+    gint fd = g_file_open_tmp("test_cr_short_key_XXXXXX", &key_path, &error);
+    cr_assert_neq(fd, -1, "Could not create short key fixture: %s", error ? error->message : "unknown error");
+
+    const guchar short_key[] = {0x01, 0x23, 0x45, 0x67};
+    cr_assert_eq(write(fd, short_key, sizeof(short_key)), sizeof(short_key));
+    close(fd);
+
+    guchar key[KEY_SIZE] = {0};
+    cr_assert_eq(cr_read_key(key_path, key), FALSE,
+                 "Key reader must reject a file shorter than KEY_SIZE.");
+    g_unlink(key_path);
+    g_free(key_path);
+}
 /*
 ======================================================================
 ===
@@ -108,6 +126,54 @@ Test(cr_logger_encrypt, encrypt_log_message_length)
     cr_assert_arr_neq(cipherLogMessage, msg, MIN(msg_len, (size_t)expected_len),
                       "Encrypted message must not equal plaintext.");
 
+}
+
+Test(cr_logger_encrypt, truncates_oversized_messages_to_fixed_payload)
+{
+    guchar key[KEY_SIZE] = {
+        0x10, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+        0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78,
+        0x90, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00,
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88
+    };
+    guchar *oversized_message = g_malloc(MESSAGE_LEN_SLOGCR + 128);
+    guchar *ciphertext = g_malloc(CIPHERTEXT_LEN);
+    memset(oversized_message, 'A', MESSAGE_LEN_SLOGCR + 128);
+
+    cr_assert_eq(cr_encryptLog(key, oversized_message, MESSAGE_LEN_SLOGCR + 128, ciphertext),
+                 CIPHERTEXT_LEN, "Oversized messages must produce one fixed-size ciphertext.");
+
+    g_free(ciphertext);
+    g_free(oversized_message);
+}
+
+Test(cr_logger_files, create_fixed_size_file_and_fill_with_prg_pad)
+{
+    FILE *file = tmpfile();
+    cr_assert_not_null(file, "Could not create temporary log file");
+    const size_t slot_count = 3;
+    const guchar seed[KEY_SIZE] = {
+        0x54, 0x65, 0x73, 0x74, 0x4d, 0x61, 0x73, 0x74,
+        0x65, 0x72, 0x4b, 0x65, 0x79, 0x2d, 0x32, 0x30,
+        0x32, 0x36, 0x2d, 0x63, 0x72, 0x61, 0x73, 0x68,
+        0x2d, 0x72, 0x65, 0x63, 0x6f, 0x76, 0x65, 0x72
+    };
+    cr_PRGContext *prg = cr_CreatePRGContext((guchar *)seed);
+    cr_assert_not_null(prg);
+
+    cr_assert_eq(cr_createNewLogFile(file, slot_count * LOG_LEN), TRUE);
+    cr_assert_eq(cr_initializeLogFileWithPseudoRandomPad(prg, file, slot_count), TRUE);
+    cr_assert_eq(fflush(file), 0);
+
+    struct stat file_stat = {0};
+    cr_assert_eq(fstat(fileno(file), &file_stat), 0);
+    cr_assert_eq(file_stat.st_size, (off_t)(slot_count * LOG_LEN));
+
+    cr_assert_eq(cr_createNewLogFile(NULL, LOG_LEN), FALSE);
+    cr_assert_eq(cr_initializeLogFileWithPseudoRandomPad(NULL, file, slot_count), FALSE);
+
+    g_free(prg);
+    fclose(file);
 }
 /*
 ======================================================================

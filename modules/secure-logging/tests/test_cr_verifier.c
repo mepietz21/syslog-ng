@@ -25,6 +25,7 @@
 #include <criterion/criterion.h>
 #include <criterion/logging.h>
 #include <glib.h>
+#include <glib/gstdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -115,6 +116,8 @@ Test(cr_gauss, xor_buffers_aligned)
     gsize len = 64;
     uint8_t *buf_a = aligned_alloc(AVX2_ALIGNMENT, len);
     uint8_t *buf_b = aligned_alloc(AVX2_ALIGNMENT, len);
+    cr_assert_not_null(buf_a, "Could not allocate aligned left operand");
+    cr_assert_not_null(buf_b, "Could not allocate aligned right operand");
     memset(buf_a, 0xAA, len); /* 10101010 */
     memset(buf_b, 0x55, len); /* 01010101 */
     xor_buffers(buf_a, buf_b, len);
@@ -125,7 +128,26 @@ Test(cr_gauss, xor_buffers_aligned)
     }
     free(buf_a);
     free(buf_b);
-    }
+}
+
+Test(cr_gauss, rank_of_known_matrices)
+{
+    struct cr_BMatrixType *matrix = cr_BMatrix_ctor_dyn(4, 4);
+    cr_assert_not_null(matrix);
+    cr_assert_eq(cr_pgh_RankOf(matrix), 0, "Zero matrix must have rank 0");
+
+    cr_BMatrix_setBit(matrix, 0, 0);
+    cr_assert_eq(cr_pgh_RankOf(matrix), 1, "One independent row must have rank 1");
+
+    cr_BMatrix_setBit(matrix, 1, 1);
+    cr_BMatrix_setBit(matrix, 2, 2);
+    cr_assert_eq(cr_pgh_RankOf(matrix), 3, "Three independent rows must have rank 3");
+
+    cr_BMatrix_setBit(matrix, 3, 3);
+    cr_assert_eq(cr_pgh_RankOf(matrix), 4, "Identity matrix must have full rank");
+    cr_BMatrix_destructor_dyn(&matrix);
+    cr_assert_null(matrix);
+}
 
 Test(cr_gauss, create_and_free_gptrarray_xor)
 {
@@ -164,7 +186,6 @@ Test(cr_verifier_helpers, fnv1a_hash_and_id_equal)
 
     guint hash1 = fnv1a_hash_ID_LEN(id1);
     guint hash2 = fnv1a_hash_ID_LEN(id2);
-    guint hash3 = fnv1a_hash_ID_LEN(id3);
     cr_assert_eq(hash1, hash2, "Hashes for identical IDs should match");
     cr_assert_neq(hash1, 0, "Hash must not be the uninitialized zero value");
     cr_assert_eq(id_type_buffer_equal(id1, id2), TRUE);
@@ -179,6 +200,84 @@ Test(cr_verifier_helpers, is_equal_nullvector_check)
     cr_assert_eq(is_equal_nullvector(zero_buf, sizeof(zero_buf), FALSE), TRUE);
     cr_assert_eq(is_equal_nullvector(non_zero_buf, sizeof(non_zero_buf), FALSE), FALSE);
     cr_assert_eq(is_equal_nullvector(NULL, 32, FALSE), TRUE, "NULL buffer should be treated as nullvector");
+}
+
+Test(cr_verifier_helpers, read_master_key_valid_short_and_missing_files)
+{
+    GError *error = NULL;
+    gchar *directory = g_dir_make_tmp("test_cr_verifier_key_XXXXXX", &error);
+    cr_assert_not_null(directory, "Could not create temporary directory");
+    gchar *valid_path = g_build_filename(directory, "valid.key", NULL);
+    gchar *short_path = g_build_filename(directory, "short.key", NULL);
+    const guchar expected_key[KEY_SIZE] = {
+        0x10, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+        0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78,
+        0x90, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00,
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88
+    };
+    g_assert_true(g_file_set_contents(valid_path, (const gchar *)expected_key, KEY_SIZE, &error));
+    g_assert_no_error(error);
+    const guchar short_key[] = {0x01, 0x02, 0x03};
+    g_assert_true(g_file_set_contents(short_path, (const gchar *)short_key, sizeof(short_key), &error));
+    g_assert_no_error(error);
+
+    guchar loaded_key[KEY_SIZE] = {0};
+    cr_assert_eq(cr_readMasterKey(valid_path, loaded_key), TRUE);
+    cr_assert_arr_eq(loaded_key, expected_key, KEY_SIZE);
+    cr_assert_eq(cr_readMasterKey(short_path, loaded_key), FALSE);
+    cr_assert_eq(cr_readMasterKey(NULL, loaded_key), FALSE);
+
+    gchar *missing_path = g_build_filename(directory, "missing.key", NULL);
+    cr_assert_eq(cr_readMasterKey(missing_path, loaded_key), FALSE);
+    g_unlink(valid_path);
+    g_unlink(short_path);
+    g_rmdir(directory);
+    g_free(missing_path);
+    g_free(valid_path);
+    g_free(short_path);
+    g_free(directory);
+}
+
+Test(cr_verifier_helpers, decrypt_log_checks_cmac_before_decrypting)
+{
+    cr_KEY_TYPE key = {
+        0x10, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+        0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78,
+        0x90, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00,
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88
+    };
+    guchar iv[IV_SIZE] = {
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10
+    };
+    const gchar *message = "<134>host app: verifier helper";
+    guchar padded[MESSAGE_LEN_SLOGCR] = {0};
+    guchar ciphertext[MESSAGE_LEN_SLOGCR] = {0};
+    guchar encrypted[CIPHERTEXT_LEN] = {0};
+    guchar mac[MAC_LEN] = {0};
+    gsize mac_size = 0;
+
+    memcpy(padded, message, strlen(message));
+    cr_assert_eq(cr_AES_256_CTR_encrypt(padded, MESSAGE_LEN_SLOGCR, key, iv, ciphertext),
+                 MESSAGE_LEN_SLOGCR);
+    memcpy(encrypted, iv, IV_SIZE);
+    memcpy(encrypted + IV_SIZE, ciphertext, MESSAGE_LEN_SLOGCR);
+    cr_assert_eq(cr_CMAC(key, ciphertext, MESSAGE_LEN_SLOGCR, mac, &mac_size, sizeof(mac)), 1);
+    cr_assert_eq(mac_size, MAC_LEN);
+    memcpy(encrypted + IV_SIZE + MESSAGE_LEN_SLOGCR, mac, MAC_LEN);
+
+    cr_XOR_TYPE aligned_encrypted = {0};
+    memcpy(aligned_encrypted, encrypted, sizeof(encrypted));
+    GString *decrypted = cr_decryptLog(key, aligned_encrypted);
+    cr_assert_not_null(decrypted);
+    cr_assert_str_eq(decrypted->str, message);
+    g_string_free(decrypted, TRUE);
+
+    aligned_encrypted[IV_SIZE + MESSAGE_LEN_SLOGCR] ^= 0x01;
+    decrypted = cr_decryptLog(key, aligned_encrypted);
+    cr_assert_not_null(decrypted);
+    cr_assert_eq(decrypted->len, 0, "Invalid CMAC must produce no plaintext");
+    g_string_free(decrypted, TRUE);
 }
 
 Test(cr_verifier_helpers, cpu_configuration_and_info)
